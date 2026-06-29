@@ -22,6 +22,13 @@ namespace SystemMonitor {
             return false;
         }
 
+        char className[256];
+        if (GetClassNameA(foregroundWin, className, sizeof(className))) {
+            if (strcmp(className, "WorkerW") == 0 || strcmp(className, "Progman") == 0) {
+                return false; // Clicking desktop icons creates a WorkerW or Progman foreground window
+            }
+        }
+
         // Get foreground window bounds
         RECT rc;
         if (!GetWindowRect(foregroundWin, &rc)) return false;
