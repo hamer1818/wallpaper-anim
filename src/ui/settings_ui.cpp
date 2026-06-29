@@ -325,6 +325,32 @@ void SettingsUI::RenderUI() {
     auto& config = configManager.GetConfig();
     bool changed = false;
 
+    // Process Async Callbacks on Main Thread
+    if (m_ytFetchComplete) {
+        m_ytFetching = false;
+        m_ytFetchComplete = false;
+        if (m_ytFetchSuccess) {
+            m_ytResolutions = m_ytFetchResResult;
+            m_ytTitle = m_ytFetchTitleResult;
+            m_ytSelectedRes = 0;
+        } else {
+            m_lastErrorMsg = m_ytFetchErrResult;
+            m_showError = true;
+        }
+    }
+
+    if (m_ytDownloadComplete) {
+        m_ytDownloading = false;
+        m_ytDownloadComplete = false;
+        if (m_ytDownloadSuccess) {
+            AddToHistory(m_ytDownloadPathResult, 3);
+            PlayMedia(m_ytDownloadPathResult);
+        } else {
+            m_lastErrorMsg = m_ytDownloadErrResult;
+            m_showError = true;
+        }
+    }
+
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
     ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
@@ -530,15 +556,11 @@ void SettingsUI::RenderUI() {
                     m_ytFetching = true;
                     m_ytResolutions.clear();
                     Utils::YouTubeDownloader::FetchResolutionsAsync(m_ytUrl, [this](bool success, const std::vector<Utils::YouTubeResolution>& res, const std::string& title, const std::string& err) {
-                        m_ytFetching = false;
-                        if (success) {
-                            m_ytResolutions = res;
-                            m_ytTitle = title;
-                            m_ytSelectedRes = 0;
-                        } else {
-                            m_lastErrorMsg = err;
-                            m_showError = true;
-                        }
+                        m_ytFetchSuccess = success;
+                        m_ytFetchResResult = res;
+                        m_ytFetchTitleResult = title;
+                        m_ytFetchErrResult = err;
+                        m_ytFetchComplete = true;
                     });
                 }
 
@@ -564,18 +586,14 @@ void SettingsUI::RenderUI() {
                             m_ytDownloading = true;
                             m_ytProgress = 0.0f;
                             Utils::YouTubeDownloader::DownloadAsync(m_ytUrl, m_ytResolutions[m_ytSelectedRes].format_id, &m_ytProgress, [this](bool success, const std::wstring& path, const std::string& err) {
-                                m_ytDownloading = false;
-                                if (success) {
-                                    AddToHistory(path, 3);
-                                    PlayMedia(path);
-                                } else {
-                                    m_lastErrorMsg = err;
-                                    m_showError = true;
-                                }
+                                m_ytDownloadSuccess = success;
+                                m_ytDownloadPathResult = path;
+                                m_ytDownloadErrResult = err;
+                                m_ytDownloadComplete = true;
                             });
                         }
                     } else {
-                        ImGui::ProgressBar(m_ytProgress, ImVec2(-1.0f, 0.0f));
+                        ImGui::ProgressBar(m_ytProgress.load(), ImVec2(-1.0f, 0.0f));
                     }
                 }
             }

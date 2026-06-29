@@ -138,16 +138,18 @@ namespace Utils {
 
             if (retCode == 0) {
                 // To get the final filename, we can parse it from yt-dlp output or just run a quick -O to get filename
-                std::string nameCmd = "yt-dlp.exe --get-filename -o \"" + std::string(cacheDirMbs) + "\\%(id)s.mp4\" \"" + url + "\"";
+                std::string nameCmd = "yt-dlp.exe --get-filename --no-warnings -o \"" + std::string(cacheDirMbs) + "\\%(id)s.mp4\" \"" + url + "\"";
                 FILE* np = _popen(nameCmd.c_str(), "r");
                 char nBuf[1024];
                 std::string finalPath = "";
-                if (np && fgets(nBuf, sizeof(nBuf), np) != NULL) {
+                while (np && fgets(nBuf, sizeof(nBuf), np) != NULL) {
                     finalPath = nBuf;
-                    // trim newline
-                    finalPath.erase(finalPath.find_last_not_of(" \n\r\t") + 1);
                 }
                 if (np) _pclose(np);
+
+                if (!finalPath.empty()) {
+                    finalPath.erase(finalPath.find_last_not_of(" \n\r\t") + 1);
+                }
 
                 int size_needed = MultiByteToWideChar(CP_UTF8, 0, &finalPath[0], (int)finalPath.size(), NULL, 0);
                 std::wstring wPath(size_needed, 0);

@@ -50,10 +50,22 @@ private:
     char m_ytUrl[512] = "";
     bool m_ytFetching = false;
     bool m_ytDownloading = false;
-    std::atomic<float> m_ytProgress = 0.0f;
+    std::atomic<float> m_ytProgress{0.0f};
+    std::string m_ytTitle;
     std::vector<Utils::YouTubeResolution> m_ytResolutions;
     int m_ytSelectedRes = 0;
-    std::string m_ytTitle = "";
+
+    // Async Callback Queue state
+    bool m_ytFetchComplete = false;
+    bool m_ytFetchSuccess = false;
+    std::vector<Utils::YouTubeResolution> m_ytFetchResResult;
+    std::string m_ytFetchTitleResult;
+    std::string m_ytFetchErrResult;
+
+    bool m_ytDownloadComplete = false;
+    bool m_ytDownloadSuccess = false;
+    std::wstring m_ytDownloadPathResult;
+    std::string m_ytDownloadErrResult;
 
     // Error State
     std::string m_lastErrorMsg = "";
