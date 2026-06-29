@@ -51,9 +51,10 @@ namespace Config {
                 file >> j;
                 if (j.contains("lastVideoPath")) m_config.lastVideoPath = s2ws(j["lastVideoPath"].get<std::string>());
                 if (j.contains("maxFPS")) m_config.maxFPS = j["maxFPS"].get<int>();
-                if (j.contains("pauseOnFullscreen")) m_config.pauseOnFullscreen = j["pauseOnFullscreen"].get<bool>();
-                if (j.contains("pauseOnBattery")) m_config.pauseOnBattery = j["pauseOnBattery"].get<bool>();
-                if (j.contains("isFirstRun")) m_config.isFirstRun = j["isFirstRun"].get<bool>();
+                m_config.pauseOnFullscreen = j.value("pauseOnFullscreen", true);
+                m_config.pauseOnBattery = j.value("pauseOnBattery", false);
+                m_config.isFirstRun = j.value("isFirstRun", true);
+                m_config.lastUpdateCheck = j.value("lastUpdateCheck", (int64_t)0);
                 
                 if (j.contains("history") && j["history"].is_array()) {
                     for (auto& item : j["history"]) {
@@ -78,6 +79,7 @@ namespace Config {
         j["pauseOnFullscreen"] = m_config.pauseOnFullscreen;
         j["pauseOnBattery"] = m_config.pauseOnBattery;
         j["isFirstRun"] = m_config.isFirstRun;
+        j["lastUpdateCheck"] = m_config.lastUpdateCheck;
 
         json historyArray = json::array();
         for (const auto& h : m_config.history) {

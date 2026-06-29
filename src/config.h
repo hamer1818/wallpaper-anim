@@ -16,6 +16,7 @@ namespace Config {
         bool pauseOnFullscreen = true;
         bool pauseOnBattery = false;
         bool isFirstRun = true;
+        int64_t lastUpdateCheck = 0;
         std::vector<WallpaperHistoryItem> history;
     };
 

@@ -8,6 +8,9 @@
 #include <vector>
 #include "utils/texture_loader.h"
 #include "utils/thumbnail_generator.h"
+#include "../version.h"
+#include "../localization.h"
+#include <ctime>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -20,6 +23,18 @@ SettingsUI::SettingsUI() : m_hInstance(nullptr), m_hwnd(nullptr), m_mainHwnd(nul
 
 SettingsUI::~SettingsUI() {
     Cleanup();
+}
+
+void SettingsUI::CheckForUpdate(bool showPopupIfUpToDate) {
+    if (m_updateChecking) return;
+    m_updateChecking = true;
+    m_showUpdateUpToDate = showPopupIfUpToDate;
+    
+    Utils::UpdateChecker::CheckForUpdateAsync([this](const Utils::UpdateInfo& info) {
+        m_updateChecking = false;
+        m_updateInfo = info;
+        m_showUpdatePopup = true;
+    });
 }
 
 bool SettingsUI::Initialize(HINSTANCE hInstance, ID3D11Device* device, HWND mainHwnd) {
@@ -104,6 +119,14 @@ bool SettingsUI::Initialize(HINSTANCE hInstance, ID3D11Device* device, HWND main
     colors[ImGuiCol_SeparatorActive] = ImVec4(0.00f, 0.70f, 0.90f, 1.00f);
 
     m_imguiInitialized = true;
+
+    Config::AppConfig& config = Config::ConfigManager::GetInstance().GetConfig();
+    int64_t now = time(nullptr);
+    if (now - config.lastUpdateCheck > 7 * 24 * 3600) {
+        config.lastUpdateCheck = now;
+        Config::ConfigManager::GetInstance().Save();
+        CheckForUpdate(false);
+    }
 
     return true;
 }
@@ -306,22 +329,24 @@ void SettingsUI::RenderUI() {
     ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
     
     // Header
-    ImGui::TextColored(ImVec4(0.0f, 0.7f, 0.9f, 1.0f), "WallpaperAnim Settings");
+    const auto& L = Localization::Get();
+
+    ImGui::TextColored(ImVec4(0.0f, 0.7f, 0.9f, 1.0f), "%s", L.settingsTitle);
     ImGui::Separator();
     ImGui::Spacing();
 
     if (config.isFirstRun) {
-        ImGui::OpenPopup("WallpaperAnim'e Hos Geldiniz!");
+        ImGui::OpenPopup("##Welcome");
     }
 
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal("WallpaperAnim'e Hos Geldiniz!", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::Text("Merhaba! WallpaperAnim'i kurdugunuz icin tesekkurler.\n\n"
-                    "Ilk animasyonlu arka planinizi ayarlamak icin:\n"
-                    "1. 'Add New / YouTube' sekmesine gidin.\n"
-                    "2. Bir video secin veya YouTube linki yapistirin.\n");
+    if (ImGui::BeginPopupModal("##Welcome", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("%s", L.welcomeTitle);
         ImGui::Separator();
-        if (ImGui::Button("Anladim, Baslayalim!", ImVec2(180, 0))) {
+        ImGui::Spacing();
+        ImGui::TextWrapped("%s", L.welcomeBody);
+        ImGui::Separator();
+        if (ImGui::Button(L.welcomeBtn, ImVec2(200, 0))) {
             config.isFirstRun = false;
             changed = true;
             ImGui::CloseCurrentPopup();
@@ -330,17 +355,68 @@ void SettingsUI::RenderUI() {
     }
 
     if (m_showError) {
-        ImGui::OpenPopup("Hata Olustu");
+        ImGui::OpenPopup("##Error");
         m_showError = false;
     }
     
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSizeConstraints(ImVec2(300, -1), ImVec2(600, -1));
-    if (ImGui::BeginPopupModal("Hata Olustu", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (ImGui::BeginPopupModal("##Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("%s", L.errorTitle);
+        ImGui::Separator();
+        ImGui::Spacing();
         ImGui::TextWrapped("%s", m_lastErrorMsg.c_str());
         ImGui::Separator();
         ImGui::Spacing();
-        if (ImGui::Button("Tamam", ImVec2(120, 0))) {
+        if (ImGui::Button(L.okBtn, ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (m_showUpdatePopup) {
+        if (!m_updateInfo.errorMessage.empty()) {
+            m_lastErrorMsg = m_updateInfo.errorMessage;
+            m_showError = true;
+        } else if (m_updateInfo.hasUpdate) {
+            ImGui::OpenPopup("##UpdateAvailable");
+        } else if (m_showUpdateUpToDate) {
+            ImGui::OpenPopup("##UpToDate");
+        }
+        m_showUpdatePopup = false;
+    }
+
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(300, -1), ImVec2(600, -1));
+    if (ImGui::BeginPopupModal("##UpdateAvailable", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("%s", L.updateAvailableTitle);
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::Text(L.updateAvailableMsg, m_updateInfo.version.c_str());
+        ImGui::Spacing();
+        ImGui::Text("%s", L.updateDownloadHint);
+        ImGui::Separator();
+        ImGui::Spacing();
+        if (ImGui::Button(L.downloadBtn, ImVec2(120, 0))) {
+            ShellExecuteA(NULL, "open", m_updateInfo.releaseUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(L.cancelBtn, ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    if (ImGui::BeginPopupModal("##UpToDate", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("%s", L.appUpToDateTitle);
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::Text(L.appUpToDateMsg, APP_VERSION_STRING);
+        ImGui::Separator();
+        ImGui::Spacing();
+        if (ImGui::Button(L.okBtn, ImVec2(120, 0))) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -348,9 +424,9 @@ void SettingsUI::RenderUI() {
 
     if (ImGui::BeginTabBar("MainTabs")) {
         // TAB 1: Library
-        if (ImGui::BeginTabItem("Library")) {
+        if (ImGui::BeginTabItem(L.tabLibrary)) {
             ImGui::Spacing();
-            ImGui::Text("Your Wallpapers:");
+            ImGui::Text("%s", L.yourWallpapers);
             ImGui::Separator();
             ImGui::BeginChild("LibraryScroll", ImVec2(0, ImGui::GetContentRegionAvail().y - 45));
             
@@ -399,15 +475,15 @@ void SettingsUI::RenderUI() {
         }
 
         // TAB 2: Add New / YouTube
-        if (ImGui::BeginTabItem("Add New / YouTube")) {
+        if (ImGui::BeginTabItem(L.tabAddNew)) {
             ImGui::Spacing();
             
-            ImGui::Text("Local File");
+            ImGui::Text("%s", L.localFile);
             if (ImGui::BeginChild("LocalPanel", ImVec2(0, 80), true)) {
                 ImGui::AlignTextToFramePadding();
-                ImGui::Text("Browse PC:");
+                ImGui::Text("%s", L.browsePC);
                 ImGui::SameLine();
-                if (ImGui::Button("Browse...", ImVec2(100, 0))) {
+                if (ImGui::Button(L.browseBtn, ImVec2(100, 0))) {
                     std::wstring newPath = OpenFileDialog();
                     if (!newPath.empty()) {
                         int type = 0;
@@ -421,15 +497,15 @@ void SettingsUI::RenderUI() {
             ImGui::EndChild();
             ImGui::Spacing();
 
-            ImGui::Text("YouTube Video");
+            ImGui::Text("%s", L.youtubeVideo);
             if (ImGui::BeginChild("YouTubePanel", ImVec2(0, 160), true)) {
                 ImGui::AlignTextToFramePadding();
-                ImGui::Text("URL:");
+                ImGui::Text("%s", L.urlLabel);
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 100);
                 ImGui::InputText("##YTUrl", m_ytUrl, sizeof(m_ytUrl));
                 ImGui::SameLine();
-                if (ImGui::Button("Fetch", ImVec2(90, 0))) {
+                if (ImGui::Button(L.fetchBtn, ImVec2(90, 0))) {
                     m_ytFetching = true;
                     m_ytResolutions.clear();
                     Utils::YouTubeDownloader::FetchResolutionsAsync(m_ytUrl, [this](bool success, const std::vector<Utils::YouTubeResolution>& res, const std::string& title, const std::string& err) {
@@ -446,13 +522,13 @@ void SettingsUI::RenderUI() {
                 }
 
                 if (m_ytFetching) {
-                    ImGui::Text("Fetching resolutions... Please wait.");
+                    ImGui::Text("%s", L.fetchingMsg);
                 } else if (!m_ytResolutions.empty()) {
-                    ImGui::Text("Title: %s", m_ytTitle.c_str());
+                    ImGui::Text("%s %s", L.titleLabel, m_ytTitle.c_str());
                     
                     std::string preview_value = std::to_string(m_ytResolutions[m_ytSelectedRes].height) + "p";
-                    if (ImGui::BeginCombo("Quality", preview_value.c_str())) {
-                        for (int i = 0; i < m_ytResolutions.size(); i++) {
+                    if (ImGui::BeginCombo(L.qualityLabel, preview_value.c_str())) {
+                        for (int i = 0; i < (int)m_ytResolutions.size(); i++) {
                             const bool is_selected = (m_ytSelectedRes == i);
                             std::string res_label = std::to_string(m_ytResolutions[i].height) + "p";
                             if (ImGui::Selectable(res_label.c_str(), is_selected))
@@ -463,7 +539,7 @@ void SettingsUI::RenderUI() {
                     }
 
                     if (!m_ytDownloading) {
-                        if (ImGui::Button("Download & Play", ImVec2(150, 0))) {
+                        if (ImGui::Button(L.downloadPlayBtn, ImVec2(150, 0))) {
                             m_ytDownloading = true;
                             m_ytProgress = 0.0f;
                             Utils::YouTubeDownloader::DownloadAsync(m_ytUrl, m_ytResolutions[m_ytSelectedRes].format_id, &m_ytProgress, [this](bool success, const std::wstring& path, const std::string& err) {
@@ -488,12 +564,12 @@ void SettingsUI::RenderUI() {
         }
 
         // TAB 3: Settings
-        if (ImGui::BeginTabItem("Settings")) {
+        if (ImGui::BeginTabItem(L.tabSettings)) {
             ImGui::Spacing();
-            ImGui::Text("Performance");
+            ImGui::Text("%s", L.performance);
             if (ImGui::BeginChild("PerfPanel", ImVec2(0, 80), true)) {
                 ImGui::AlignTextToFramePadding();
-                ImGui::Text("Max FPS:");
+                ImGui::Text("%s", L.maxFps);
                 ImGui::SameLine(100);
                 ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 if (ImGui::SliderInt("##MaxFPS", &config.maxFPS, 10, 144, "%d FPS")) changed = true;
@@ -501,19 +577,33 @@ void SettingsUI::RenderUI() {
             ImGui::EndChild();
             ImGui::Spacing();
 
-            ImGui::Text("Power Saving");
+            ImGui::Text("%s", L.powerSaving);
             if (ImGui::BeginChild("PowerPanel", ImVec2(0, 110), true)) {
                 ImGui::AlignTextToFramePadding();
-                ImGui::Text("Pause on Fullscreen (Gaming)");
+                ImGui::Text("%s", L.pauseFullscreen);
                 ImGui::SameLine(ImGui::GetContentRegionAvail().x - 40);
                 if (ToggleButton("##PauseFS", &config.pauseOnFullscreen)) changed = true;
 
                 ImGui::AlignTextToFramePadding();
-                ImGui::Text("Pause on Battery Power");
+                ImGui::Text("%s", L.pauseBattery);
                 ImGui::SameLine(ImGui::GetContentRegionAvail().x - 40);
                 if (ToggleButton("##PauseBatt", &config.pauseOnBattery)) changed = true;
             }
             ImGui::EndChild();
+            ImGui::Spacing();
+
+            ImGui::Separator();
+            ImGui::Text("%s", L.about);
+            ImGui::Text("WallpaperAnim v%s", APP_VERSION_STRING);
+            ImGui::Spacing();
+            
+            if (m_updateChecking) {
+                ImGui::Text("%s", L.checkingUpdate);
+            } else {
+                if (ImGui::Button(L.checkUpdate, ImVec2(220, 0))) {
+                    CheckForUpdate(true);
+                }
+            }
             
             ImGui::EndTabItem();
         }
@@ -524,7 +614,7 @@ void SettingsUI::RenderUI() {
     ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 40);
     ImGui::Separator();
     ImGui::SetCursorPosX(ImGui::GetWindowWidth() / 2 - 50);
-    if (ImGui::Button("Close", ImVec2(100, 0))) {
+    if (ImGui::Button(L.closeBtn, ImVec2(100, 0))) {
         Hide();
     }
 

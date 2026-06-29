@@ -8,6 +8,7 @@
 using Microsoft::WRL::ComPtr;
 
 #include "utils/youtube_downloader.h"
+#include "utils/update_checker.h"
 #include <map>
 #include <atomic>
 #include <vector>
@@ -57,6 +58,13 @@ private:
     // Error State
     std::string m_lastErrorMsg = "";
     bool m_showError = false;
+
+    // Update State
+    bool m_updateChecking = false;
+    bool m_showUpdatePopup = false;
+    Utils::UpdateInfo m_updateInfo;
+    void CheckForUpdate(bool showPopupIfUpToDate);
+    bool m_showUpdateUpToDate = false;
 
     // Thumbnail Cache
     std::map<std::wstring, ComPtr<ID3D11ShaderResourceView>> m_thumbnails;
