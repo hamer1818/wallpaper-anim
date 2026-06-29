@@ -1,0 +1,588 @@
+#include "settings_ui.h"
+#include "config.h"
+#include "imgui.h"
+#include "imgui_internal.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx11.h"
+#include <commdlg.h>
+#include <vector>
+#include "utils/texture_loader.h"
+#include "utils/thumbnail_generator.h"
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+#include "resource.h"
+
+// Global pointer for WndProc
+static SettingsUI* g_pSettingsUI = nullptr;
+
+SettingsUI::SettingsUI() : m_hInstance(nullptr), m_hwnd(nullptr), m_mainHwnd(nullptr), m_isVisible(false), m_imguiInitialized(false) {}
+
+SettingsUI::~SettingsUI() {
+    Cleanup();
+}
+
+bool SettingsUI::Initialize(HINSTANCE hInstance, ID3D11Device* device, HWND mainHwnd) {
+    m_hInstance = hInstance;
+    m_device = device;
+    m_mainHwnd = mainHwnd;
+    m_device->GetImmediateContext(&m_context);
+    g_pSettingsUI = this;
+
+    // Register class
+    HICON hIcon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_APP_ICON));
+    WNDCLASSEXW wc = { sizeof(WNDCLASSEXW), CS_CLASSDC, WndProc, 0L, 0L, hInstance, hIcon, nullptr, nullptr, nullptr, L"WallpaperAnimSettingsUI", hIcon };
+    RegisterClassExW(&wc);
+
+    // Create window
+    m_hwnd = CreateWindowW(L"WallpaperAnimSettingsUI", L"WallpaperAnim Settings", WS_OVERLAPPEDWINDOW, 100, 100, 600, 550, nullptr, nullptr, hInstance, nullptr);
+    if (!m_hwnd) return false;
+
+    if (!CreateDeviceAndSwapChain()) return false;
+
+    // Setup ImGui
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    
+    ImGui_ImplWin32_Init(m_hwnd);
+    ImGui_ImplDX11_Init(m_device.Get(), m_context.Get());
+
+    ImGuiIO& io = ImGui::GetIO();
+    // Disable INI file
+    io.IniFilename = nullptr;
+    
+    // Load modern font (Segoe UI)
+    char windowsFolder[MAX_PATH];
+    GetWindowsDirectoryA(windowsFolder, MAX_PATH);
+    std::string fontPath = std::string(windowsFolder) + "\\Fonts\\segoeui.ttf";
+    io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 18.0f);
+
+    // Apply Premium Dark Theme
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowPadding = ImVec2(16.0f, 16.0f);
+    style.FramePadding = ImVec2(10.0f, 6.0f);
+    style.ItemSpacing = ImVec2(8.0f, 10.0f);
+    style.ItemInnerSpacing = ImVec2(6.0f, 6.0f);
+    style.WindowRounding = 10.0f;
+    style.ChildRounding = 8.0f;
+    style.FrameRounding = 6.0f;
+    style.PopupRounding = 6.0f;
+    style.ScrollbarRounding = 12.0f;
+    style.GrabRounding = 6.0f;
+    style.TabRounding = 6.0f;
+
+    ImVec4* colors = style.Colors;
+    colors[ImGuiCol_Text] = ImVec4(0.95f, 0.95f, 0.95f, 1.00f);
+    colors[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+    colors[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
+    colors[ImGuiCol_ChildBg] = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);
+    colors[ImGuiCol_PopupBg] = ImVec4(0.08f, 0.08f, 0.08f, 0.94f);
+    colors[ImGuiCol_Border] = ImVec4(0.24f, 0.24f, 0.24f, 1.00f);
+    colors[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_FrameBg] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.30f, 0.30f, 0.30f, 1.00f);
+    colors[ImGuiCol_TitleBg] = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
+    colors[ImGuiCol_TitleBgActive] = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
+    colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.00f, 0.00f, 0.00f, 0.51f);
+    colors[ImGuiCol_MenuBarBg] = ImVec4(0.14f, 0.14f, 0.14f, 1.00f);
+    colors[ImGuiCol_ScrollbarBg] = ImVec4(0.02f, 0.02f, 0.02f, 0.53f);
+    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.31f, 0.31f, 0.31f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.41f, 0.41f, 0.41f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.51f, 0.51f, 0.51f, 1.00f);
+    colors[ImGuiCol_CheckMark] = ImVec4(0.00f, 0.70f, 0.90f, 1.00f);
+    colors[ImGuiCol_SliderGrab] = ImVec4(0.00f, 0.70f, 0.90f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.00f, 0.80f, 1.00f, 1.00f);
+    colors[ImGuiCol_Button] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.28f, 0.28f, 0.28f, 1.00f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.00f, 0.70f, 0.90f, 1.00f);
+    colors[ImGuiCol_Header] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+    colors[ImGuiCol_HeaderHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+    colors[ImGuiCol_HeaderActive] = ImVec4(0.30f, 0.30f, 0.30f, 1.00f);
+    colors[ImGuiCol_Separator] = ImVec4(0.24f, 0.24f, 0.24f, 1.00f);
+    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.39f, 0.39f, 0.39f, 1.00f);
+    colors[ImGuiCol_SeparatorActive] = ImVec4(0.00f, 0.70f, 0.90f, 1.00f);
+
+    m_imguiInitialized = true;
+
+    return true;
+}
+
+void SettingsUI::Cleanup() {
+    if (m_imguiInitialized) {
+        ImGui_ImplDX11_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext();
+        m_imguiInitialized = false;
+    }
+
+    CleanupRenderTarget();
+    m_swapChain.Reset();
+    m_context.Reset();
+    m_device.Reset();
+
+    if (m_hwnd) {
+        DestroyWindow(m_hwnd);
+        UnregisterClassW(L"WallpaperAnimSettingsUI", m_hInstance);
+        m_hwnd = nullptr;
+    }
+    g_pSettingsUI = nullptr;
+}
+
+void SettingsUI::Show() {
+    if (m_hwnd && !m_isVisible) {
+        ShowWindow(m_hwnd, SW_SHOWDEFAULT);
+        UpdateWindow(m_hwnd);
+        m_isVisible = true;
+    }
+}
+
+void SettingsUI::Hide() {
+    if (m_hwnd && m_isVisible) {
+        ShowWindow(m_hwnd, SW_HIDE);
+        m_isVisible = false;
+    }
+}
+
+bool SettingsUI::CreateDeviceAndSwapChain() {
+    ComPtr<IDXGIDevice> dxgiDevice;
+    if (FAILED(m_device.As(&dxgiDevice))) return false;
+
+    ComPtr<IDXGIAdapter> adapter;
+    if (FAILED(dxgiDevice->GetAdapter(&adapter))) return false;
+
+    ComPtr<IDXGIFactory> factory;
+    if (FAILED(adapter->GetParent(IID_PPV_ARGS(&factory)))) return false;
+
+    DXGI_SWAP_CHAIN_DESC sd;
+    ZeroMemory(&sd, sizeof(sd));
+    sd.BufferCount = 2;
+    sd.BufferDesc.Width = 0;
+    sd.BufferDesc.Height = 0;
+    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    sd.BufferDesc.RefreshRate.Numerator = 60;
+    sd.BufferDesc.RefreshRate.Denominator = 1;
+    sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    sd.OutputWindow = m_hwnd;
+    sd.SampleDesc.Count = 1;
+    sd.SampleDesc.Quality = 0;
+    sd.Windowed = TRUE;
+    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+
+    if (FAILED(factory->CreateSwapChain(m_device.Get(), &sd, &m_swapChain))) return false;
+
+    CreateRenderTarget();
+    return true;
+}
+
+void SettingsUI::CreateRenderTarget() {
+    ComPtr<ID3D11Texture2D> pBackBuffer;
+    m_swapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
+    m_device->CreateRenderTargetView(pBackBuffer.Get(), nullptr, &m_mainRenderTargetView);
+}
+
+void SettingsUI::CleanupRenderTarget() {
+    m_mainRenderTargetView.Reset();
+}
+
+std::wstring SettingsUI::OpenFileDialog() {
+    wchar_t filename[MAX_PATH] = { 0 };
+    OPENFILENAMEW ofn = { 0 };
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = m_hwnd;
+    ofn.lpstrFilter = L"Media Files (*.mp4;*.avi;*.gif;*.hlsl)\0*.mp4;*.avi;*.gif;*.hlsl\0All Files (*.*)\0*.*\0";
+    ofn.lpstrFile = filename;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+
+    if (GetOpenFileNameW(&ofn)) {
+        return std::wstring(filename);
+    }
+    return L"";
+}
+
+// Custom ToggleButton implementation for ImGui
+bool ToggleButton(const char* str_id, bool* v) {
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    
+    float height = ImGui::GetFrameHeight();
+    float width = height * 1.8f;
+    float radius = height * 0.5f;
+
+    ImGui::InvisibleButton(str_id, ImVec2(width, height));
+    bool clicked = ImGui::IsItemClicked();
+    if (clicked) *v = !*v;
+    
+    float t = *v ? 1.0f : 0.0f;
+
+    ImGuiContext& g = *GImGui;
+    float ANIM_SPEED = 0.08f;
+    if (g.LastActiveId == g.CurrentWindow->GetID(str_id)) {
+        float t_anim = ImGui::GetStateStorage()->GetFloat(ImGui::GetID(str_id), t);
+        float t_target = *v ? 1.0f : 0.0f;
+        if (t_anim != t_target) {
+            t_anim += (t_target - t_anim) * ImGui::GetIO().DeltaTime * 12.0f;
+            ImGui::GetStateStorage()->SetFloat(ImGui::GetID(str_id), t_anim);
+        }
+        t = t_anim;
+    }
+
+    ImU32 col_bg;
+    if (ImGui::IsItemHovered())
+        col_bg = ImGui::GetColorU32(ImLerp(ImVec4(0.35f, 0.35f, 0.35f, 1.0f), ImVec4(0.00f, 0.80f, 1.00f, 1.0f), t));
+    else
+        col_bg = ImGui::GetColorU32(ImLerp(ImVec4(0.25f, 0.25f, 0.25f, 1.0f), ImVec4(0.00f, 0.70f, 0.90f, 1.0f), t));
+
+    draw_list->AddRectFilled(p, ImVec2(p.x + width, p.y + height), col_bg, height * 0.5f);
+    draw_list->AddCircleFilled(ImVec2(p.x + radius + t * (width - radius * 2.0f), p.y + radius), radius - 2.5f, IM_COL32(255, 255, 255, 255));
+
+    return clicked;
+}
+
+ID3D11ShaderResourceView* SettingsUI::GetThumbnailSRV(const std::wstring& thumbPath) {
+    if (thumbPath.empty()) return nullptr;
+    if (m_thumbnails.find(thumbPath) != m_thumbnails.end()) {
+        return m_thumbnails[thumbPath].Get();
+    }
+    
+    // Load it
+    ComPtr<ID3D11ShaderResourceView> srv;
+    int w, h;
+    if (Utils::TextureLoader::LoadTextureFromFile(thumbPath, m_device.Get(), srv, w, h)) {
+        m_thumbnails[thumbPath] = srv;
+        return srv.Get();
+    }
+    
+    return nullptr;
+}
+
+void SettingsUI::AddToHistory(const std::wstring& path, int type) {
+    auto& config = Config::ConfigManager::GetInstance().GetConfig();
+    
+    // Check if already exists
+    for (auto it = config.history.begin(); it != config.history.end(); ++it) {
+        if (it->path == path) {
+            config.history.erase(it);
+            break;
+        }
+    }
+    
+    Config::WallpaperHistoryItem item;
+    item.path = path;
+    item.type = type;
+    
+    // Get simple filename for name
+    size_t slash = path.find_last_of(L"\\/");
+    if (slash != std::wstring::npos) item.name = path.substr(slash + 1);
+    else item.name = path;
+    
+    item.thumbPath = Utils::ThumbnailGenerator::GenerateThumbnail(path);
+    
+    // Push to front
+    config.history.insert(config.history.begin(), item);
+    Config::ConfigManager::GetInstance().Save();
+}
+
+void SettingsUI::PlayMedia(const std::wstring& path) {
+    auto& config = Config::ConfigManager::GetInstance().GetConfig();
+    config.lastVideoPath = path;
+    Config::ConfigManager::GetInstance().Save();
+    if (m_mainHwnd) {
+        PostMessage(m_mainHwnd, WM_APP + 1, 0, 0); // WM_APP_CONFIG_CHANGED
+    }
+}
+
+void SettingsUI::RenderUI() {
+    auto& configManager = Config::ConfigManager::GetInstance();
+    auto& config = configManager.GetConfig();
+    bool changed = false;
+
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+    ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+
+    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+    
+    // Header
+    ImGui::TextColored(ImVec4(0.0f, 0.7f, 0.9f, 1.0f), "WallpaperAnim Settings");
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    if (config.isFirstRun) {
+        ImGui::OpenPopup("WallpaperAnim'e Hos Geldiniz!");
+    }
+
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    if (ImGui::BeginPopupModal("WallpaperAnim'e Hos Geldiniz!", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Merhaba! WallpaperAnim'i kurdugunuz icin tesekkurler.\n\n"
+                    "Ilk animasyonlu arka planinizi ayarlamak icin:\n"
+                    "1. 'Add New / YouTube' sekmesine gidin.\n"
+                    "2. Bir video secin veya YouTube linki yapistirin.\n");
+        ImGui::Separator();
+        if (ImGui::Button("Anladim, Baslayalim!", ImVec2(180, 0))) {
+            config.isFirstRun = false;
+            changed = true;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (m_showError) {
+        ImGui::OpenPopup("Hata Olustu");
+        m_showError = false;
+    }
+    
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(300, -1), ImVec2(600, -1));
+    if (ImGui::BeginPopupModal("Hata Olustu", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextWrapped("%s", m_lastErrorMsg.c_str());
+        ImGui::Separator();
+        ImGui::Spacing();
+        if (ImGui::Button("Tamam", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::BeginTabBar("MainTabs")) {
+        // TAB 1: Library
+        if (ImGui::BeginTabItem("Library")) {
+            ImGui::Spacing();
+            ImGui::Text("Your Wallpapers:");
+            ImGui::Separator();
+            ImGui::BeginChild("LibraryScroll", ImVec2(0, ImGui::GetContentRegionAvail().y - 45));
+            
+            float window_visible_x2 = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+            ImGuiStyle& style = ImGui::GetStyle();
+            
+            int id = 0;
+            auto it = config.history.begin();
+            while (it != config.history.end()) {
+                ImGui::PushID(id++);
+                
+                ID3D11ShaderResourceView* srv = GetThumbnailSRV(it->thumbPath);
+                ImTextureID tex_id = srv ? (ImTextureID)srv : 0;
+                
+                // Group thumbnail and delete button
+                ImGui::BeginGroup();
+                if (ImGui::ImageButton("##Thumb", tex_id, ImVec2(120, 67))) { // 16:9 aspect ratio
+                    PlayMedia(it->path);
+                }
+                if (ImGui::IsItemHovered()) {
+                    char nameUtf8[256];
+                    WideCharToMultiByte(CP_UTF8, 0, it->name.c_str(), -1, nameUtf8, sizeof(nameUtf8), NULL, NULL);
+                    ImGui::SetTooltip("%s\n(Click to Play)", nameUtf8);
+                }
+                
+                if (ImGui::Button("Delete", ImVec2(120, 20))) {
+                    it = config.history.erase(it);
+                    changed = true;
+                    ImGui::EndGroup();
+                    ImGui::PopID();
+                    continue;
+                }
+                ImGui::EndGroup();
+                
+                float last_button_x2 = ImGui::GetItemRectMax().x;
+                float next_button_x2 = last_button_x2 + style.ItemSpacing.x + 120.0f; // Expected next item width
+                if (id < config.history.size() && next_button_x2 < window_visible_x2)
+                    ImGui::SameLine();
+                
+                ++it;
+                ImGui::PopID();
+            }
+            
+            ImGui::EndChild();
+            ImGui::EndTabItem();
+        }
+
+        // TAB 2: Add New / YouTube
+        if (ImGui::BeginTabItem("Add New / YouTube")) {
+            ImGui::Spacing();
+            
+            ImGui::Text("Local File");
+            if (ImGui::BeginChild("LocalPanel", ImVec2(0, 80), true)) {
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Browse PC:");
+                ImGui::SameLine();
+                if (ImGui::Button("Browse...", ImVec2(100, 0))) {
+                    std::wstring newPath = OpenFileDialog();
+                    if (!newPath.empty()) {
+                        int type = 0;
+                        if (newPath.find(L".gif") != std::wstring::npos) type = 1;
+                        if (newPath.find(L".hlsl") != std::wstring::npos) type = 2;
+                        AddToHistory(newPath, type);
+                        PlayMedia(newPath);
+                    }
+                }
+            }
+            ImGui::EndChild();
+            ImGui::Spacing();
+
+            ImGui::Text("YouTube Video");
+            if (ImGui::BeginChild("YouTubePanel", ImVec2(0, 160), true)) {
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("URL:");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 100);
+                ImGui::InputText("##YTUrl", m_ytUrl, sizeof(m_ytUrl));
+                ImGui::SameLine();
+                if (ImGui::Button("Fetch", ImVec2(90, 0))) {
+                    m_ytFetching = true;
+                    m_ytResolutions.clear();
+                    Utils::YouTubeDownloader::FetchResolutionsAsync(m_ytUrl, [this](bool success, const std::vector<Utils::YouTubeResolution>& res, const std::string& title, const std::string& err) {
+                        m_ytFetching = false;
+                        if (success) {
+                            m_ytResolutions = res;
+                            m_ytTitle = title;
+                            m_ytSelectedRes = 0;
+                        } else {
+                            m_lastErrorMsg = err;
+                            m_showError = true;
+                        }
+                    });
+                }
+
+                if (m_ytFetching) {
+                    ImGui::Text("Fetching resolutions... Please wait.");
+                } else if (!m_ytResolutions.empty()) {
+                    ImGui::Text("Title: %s", m_ytTitle.c_str());
+                    
+                    std::string preview_value = std::to_string(m_ytResolutions[m_ytSelectedRes].height) + "p";
+                    if (ImGui::BeginCombo("Quality", preview_value.c_str())) {
+                        for (int i = 0; i < m_ytResolutions.size(); i++) {
+                            const bool is_selected = (m_ytSelectedRes == i);
+                            std::string res_label = std::to_string(m_ytResolutions[i].height) + "p";
+                            if (ImGui::Selectable(res_label.c_str(), is_selected))
+                                m_ytSelectedRes = i;
+                            if (is_selected) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+
+                    if (!m_ytDownloading) {
+                        if (ImGui::Button("Download & Play", ImVec2(150, 0))) {
+                            m_ytDownloading = true;
+                            m_ytProgress = 0.0f;
+                            Utils::YouTubeDownloader::DownloadAsync(m_ytUrl, m_ytResolutions[m_ytSelectedRes].format_id, &m_ytProgress, [this](bool success, const std::wstring& path, const std::string& err) {
+                                m_ytDownloading = false;
+                                if (success) {
+                                    AddToHistory(path, 3);
+                                    PlayMedia(path);
+                                } else {
+                                    m_lastErrorMsg = err;
+                                    m_showError = true;
+                                }
+                            });
+                        }
+                    } else {
+                        ImGui::ProgressBar(m_ytProgress, ImVec2(-1.0f, 0.0f));
+                    }
+                }
+            }
+            ImGui::EndChild();
+
+            ImGui::EndTabItem();
+        }
+
+        // TAB 3: Settings
+        if (ImGui::BeginTabItem("Settings")) {
+            ImGui::Spacing();
+            ImGui::Text("Performance");
+            if (ImGui::BeginChild("PerfPanel", ImVec2(0, 80), true)) {
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Max FPS:");
+                ImGui::SameLine(100);
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                if (ImGui::SliderInt("##MaxFPS", &config.maxFPS, 10, 144, "%d FPS")) changed = true;
+            }
+            ImGui::EndChild();
+            ImGui::Spacing();
+
+            ImGui::Text("Power Saving");
+            if (ImGui::BeginChild("PowerPanel", ImVec2(0, 110), true)) {
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Pause on Fullscreen (Gaming)");
+                ImGui::SameLine(ImGui::GetContentRegionAvail().x - 40);
+                if (ToggleButton("##PauseFS", &config.pauseOnFullscreen)) changed = true;
+
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("Pause on Battery Power");
+                ImGui::SameLine(ImGui::GetContentRegionAvail().x - 40);
+                if (ToggleButton("##PauseBatt", &config.pauseOnBattery)) changed = true;
+            }
+            ImGui::EndChild();
+            
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+    
+    // Bottom Align Close Button
+    ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 40);
+    ImGui::Separator();
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() / 2 - 50);
+    if (ImGui::Button("Close", ImVec2(100, 0))) {
+        Hide();
+    }
+
+    ImGui::PopFont();
+    ImGui::End();
+
+    if (changed) {
+        configManager.Save();
+        if (m_mainHwnd) {
+            PostMessage(m_mainHwnd, WM_APP + 1, 0, 0); // WM_APP_CONFIG_CHANGED
+        }
+    }
+}
+
+void SettingsUI::Render() {
+    if (!m_isVisible || !m_imguiInitialized || !m_swapChain) return;
+
+    // Start ImGui frame
+    ImGui_ImplDX11_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+
+    RenderUI();
+
+    ImGui::Render();
+
+    const float clear_color_with_alpha[4] = { 0.1f, 0.1f, 0.1f, 1.0f };
+    m_context->OMSetRenderTargets(1, m_mainRenderTargetView.GetAddressOf(), nullptr);
+    m_context->ClearRenderTargetView(m_mainRenderTargetView.Get(), clear_color_with_alpha);
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+    m_swapChain->Present(1, 0); // VSync enabled
+}
+
+LRESULT CALLBACK SettingsUI::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+        return true;
+
+    if (msg == WM_SIZE) {
+        if (g_pSettingsUI && g_pSettingsUI->m_device && wParam != SIZE_MINIMIZED) {
+            g_pSettingsUI->CleanupRenderTarget();
+            g_pSettingsUI->m_swapChain->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, 0);
+            g_pSettingsUI->CreateRenderTarget();
+        }
+        return 0;
+    }
+    if (msg == WM_SYSCOMMAND) {
+        if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
+            return 0;
+    }
+    if (msg == WM_CLOSE) {
+        // Just hide it instead of closing
+        if (g_pSettingsUI) g_pSettingsUI->Hide();
+        return 0;
+    }
+    if (msg == WM_DESTROY) {
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProc(hWnd, msg, wParam, lParam);
+}

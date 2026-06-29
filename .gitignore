@@ -1,0 +1,22 @@
+# Build artifacts
+build/
+*.obj
+*.res
+*.exe
+*.dll
+
+# IDE
+.vs/
+*.user
+
+# Large binaries
+yt-dlp.exe
+
+# Archives
+*.zip
+*.7z
+
+# Gemini / Temp
+.gemini/
+convert.py
+IMPLEMENTATION_PLAN.md
