@@ -50,6 +50,14 @@ namespace Utils {
                 if (retCode != 0) {
                     throw std::runtime_error("yt-dlp returned error code: " + std::to_string(retCode) + "\n" + result);
                 }
+
+                // yt-dlp can sometimes print WARNING messages to stdout before the JSON.
+                // We find the first '{' to ensure we only parse the JSON part.
+                size_t jsonStart = result.find('{');
+                if (jsonStart != std::string::npos) {
+                    result = result.substr(jsonStart);
+                }
+
                 json j = json::parse(result);
                 std::string title = j.value("title", "Unknown Title");
                 std::vector<YouTubeResolution> resolutions;

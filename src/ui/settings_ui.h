@@ -70,6 +70,10 @@ private:
     std::map<std::wstring, ComPtr<ID3D11ShaderResourceView>> m_thumbnails;
     ID3D11ShaderResourceView* GetThumbnailSRV(const std::wstring& thumbPath);
 
+    ComPtr<ID3D11ShaderResourceView> m_logoSrv;
+    int m_logoWidth = 0;
+    int m_logoHeight = 0;
+
     void AddToHistory(const std::wstring& path, int type);
     void PlayMedia(const std::wstring& path);
 };

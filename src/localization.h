@@ -74,13 +74,13 @@ namespace Localization {
             "WallpaperAnim'e Hos Geldiniz!",
             "Merhaba! WallpaperAnim'i kurdugunuz icin tesekkurler.\n\n"
             "Ilk animasyonlu arka planinizi ayarlamak icin:\n"
-            "1. 'Yeni Ekle / YouTube' sekmesine gidin.\n"
+            "1. 'Yeni Ekle' sekmesine gidin.\n"
             "2. Bir video secin veya YouTube linki yapistirin.\n",
             "Anladim, Baslayalim!",
 
-            "Kutuphane",
-            "Yeni Ekle / YouTube",
-            "Ayarlar",
+            "[=] Kutuphane",
+            "[+] Yeni Ekle",
+            "[*] Ayarlar",
 
             "Duvar Kagitlariniz:",
             "Henuz gecmisinizde duvar kagidi yok.",
@@ -97,13 +97,13 @@ namespace Localization {
             "Kalite",
             "Indir ve Oynat",
 
-            "Performans",
+            "--- PERFORMANS ---",
             "Maks. FPS:",
-            "Guc Tasarrufu",
+            "--- GUC TASARRUFU ---",
             "Tam ekranda duraklat (Oyun modu)",
             "Pil kullanirken duraklat",
 
-            "Hakkinda",
+            "--- HAKKINDA ---",
             "Guncellemeyi Kontrol Et",
             "Guncellemeler kontrol ediliyor...",
             "Guncelleme Mevcut!",
@@ -125,13 +125,13 @@ namespace Localization {
             "Welcome to WallpaperAnim!",
             "Hello! Thank you for installing WallpaperAnim.\n\n"
             "To set your first animated wallpaper:\n"
-            "1. Go to the 'Add New / YouTube' tab.\n"
+            "1. Go to the 'Add New' tab.\n"
             "2. Select a video or paste a YouTube link.\n",
             "Got it, let's go!",
 
-            "Library",
-            "Add New / YouTube",
-            "Settings",
+            "[=] Library",
+            "[+] Add New",
+            "[*] Settings",
 
             "Your Wallpapers:",
             "No wallpapers in your history yet.",
@@ -148,13 +148,13 @@ namespace Localization {
             "Quality",
             "Download & Play",
 
-            "Performance",
+            "--- PERFORMANCE ---",
             "Max FPS:",
-            "Power Saving",
+            "--- POWER SAVING ---",
             "Pause on Fullscreen (Gaming)",
             "Pause on Battery Power",
 
-            "About",
+            "--- ABOUT ---",
             "Check for Updates",
             "Checking for updates...",
             "Update Available!",

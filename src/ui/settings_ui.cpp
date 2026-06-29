@@ -72,6 +72,9 @@ bool SettingsUI::Initialize(HINSTANCE hInstance, ID3D11Device* device, HWND main
     std::string fontPath = std::string(windowsFolder) + "\\Fonts\\segoeui.ttf";
     io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 18.0f);
 
+    // Load Logo
+    Utils::TextureLoader::LoadTextureFromFile(L"assets\\WallpaperAnim-logo.png", m_device.Get(), m_logoSrv, m_logoWidth, m_logoHeight);
+
     // Apply Premium Dark Theme
     ImGuiStyle& style = ImGui::GetStyle();
     style.WindowPadding = ImVec2(16.0f, 16.0f);
@@ -331,6 +334,11 @@ void SettingsUI::RenderUI() {
     // Header
     const auto& L = Localization::Get();
 
+    if (m_logoSrv) {
+        ImGui::Image((ImTextureID)m_logoSrv.Get(), ImVec2(32, 32));
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 6.0f);
+    }
     ImGui::TextColored(ImVec4(0.0f, 0.7f, 0.9f, 1.0f), "%s", L.settingsTitle);
     ImGui::Separator();
     ImGui::Spacing();
@@ -422,7 +430,8 @@ void SettingsUI::RenderUI() {
         ImGui::EndPopup();
     }
 
-    if (ImGui::BeginTabBar("MainTabs")) {
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(24.0f, 12.0f));
+    if (ImGui::BeginTabBar("MainTabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
         // TAB 1: Library
         if (ImGui::BeginTabItem(L.tabLibrary)) {
             ImGui::Spacing();
@@ -443,7 +452,19 @@ void SettingsUI::RenderUI() {
                 
                 // Group thumbnail and delete button
                 ImGui::BeginGroup();
-                if (ImGui::ImageButton("##Thumb", tex_id, ImVec2(120, 67))) { // 16:9 aspect ratio
+                
+                ImVec2 p0 = ImGui::GetCursorScreenPos();
+                ImVec2 sz = ImVec2(240, 135);
+                ImVec2 p1 = ImVec2(p0.x + sz.x, p0.y + sz.y);
+                
+                // Add a hover background rect spanning thumbnail and button
+                bool isHovered = ImGui::IsMouseHoveringRect(ImVec2(p0.x, p0.y), ImVec2(p1.x, p1.y + 36));
+                if (isHovered) {
+                    ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(p0.x - 6, p0.y - 6), ImVec2(p1.x + 6, p1.y + 40), IM_COL32(50, 50, 50, 255), 8.0f);
+                    ImGui::GetWindowDrawList()->AddRect(ImVec2(p0.x - 6, p0.y - 6), ImVec2(p1.x + 6, p1.y + 40), IM_COL32(0, 180, 230, 255), 8.0f, 0, 2.0f);
+                }
+
+                if (ImGui::ImageButton("##Thumb", tex_id, sz)) { // 16:9 aspect ratio
                     PlayMedia(it->path);
                 }
                 if (ImGui::IsItemHovered()) {
@@ -452,7 +473,7 @@ void SettingsUI::RenderUI() {
                     ImGui::SetTooltip("%s\n(Click to Play)", nameUtf8);
                 }
                 
-                if (ImGui::Button("Delete", ImVec2(120, 20))) {
+                if (ImGui::Button(L.remove, ImVec2(240, 28))) {
                     it = config.history.erase(it);
                     changed = true;
                     ImGui::EndGroup();
@@ -462,8 +483,8 @@ void SettingsUI::RenderUI() {
                 ImGui::EndGroup();
                 
                 float last_button_x2 = ImGui::GetItemRectMax().x;
-                float next_button_x2 = last_button_x2 + style.ItemSpacing.x + 120.0f; // Expected next item width
-                if (id < config.history.size() && next_button_x2 < window_visible_x2)
+                float next_button_x2 = last_button_x2 + style.ItemSpacing.x + 240.0f; // Expected next item width
+                if (id < (int)config.history.size() && next_button_x2 < window_visible_x2)
                     ImGui::SameLine();
                 
                 ++it;
@@ -609,6 +630,7 @@ void SettingsUI::RenderUI() {
         }
         ImGui::EndTabBar();
     }
+    ImGui::PopStyleVar();
     
     // Bottom Align Close Button
     ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 40);
