@@ -8,6 +8,75 @@
 
 using json = nlohmann::json;
 
+namespace {
+    struct CmdResult {
+        int exitCode;
+        std::string output;
+    };
+
+    CmdResult RunCommandHidden(const std::string& cmd, std::function<void(const std::string&)> onLine = nullptr) {
+        CmdResult res = { -1, "" };
+        SECURITY_ATTRIBUTES sa;
+        sa.nLength = sizeof(sa);
+        sa.bInheritHandle = TRUE;
+        sa.lpSecurityDescriptor = NULL;
+        
+        HANDLE hRead, hWrite;
+        if (!CreatePipe(&hRead, &hWrite, &sa, 0)) return res;
+        SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+
+        STARTUPINFOA si;
+        ZeroMemory(&si, sizeof(si));
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+        si.wShowWindow = SW_HIDE;
+        si.hStdOutput = hWrite;
+        si.hStdError = hWrite;
+
+        PROCESS_INFORMATION pi;
+        ZeroMemory(&pi, sizeof(pi));
+        
+        std::string mutableCmd = cmd;
+        if (!CreateProcessA(NULL, &mutableCmd[0], NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+            CloseHandle(hRead);
+            CloseHandle(hWrite);
+            return res;
+        }
+        CloseHandle(hWrite);
+
+        char buffer[1024];
+        DWORD bytesRead;
+        std::string currentLine = "";
+        while (ReadFile(hRead, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
+            buffer[bytesRead] = '\0';
+            res.output += buffer;
+            if (onLine) {
+                for (DWORD i = 0; i < bytesRead; ++i) {
+                    if (buffer[i] == '\n') {
+                        onLine(currentLine);
+                        currentLine.clear();
+                    } else if (buffer[i] != '\r') {
+                        currentLine += buffer[i];
+                    }
+                }
+            }
+        }
+        if (onLine && !currentLine.empty()) {
+            onLine(currentLine);
+        }
+        
+        CloseHandle(hRead);
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        DWORD exitCode = 0;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        res.exitCode = exitCode;
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        
+        return res;
+    }
+}
+
 namespace Utils {
 
     std::wstring YouTubeDownloader::GetCacheDirectory() {
@@ -31,20 +100,16 @@ namespace Utils {
                 return;
             }
 
-            std::string cmd = "yt-dlp.exe -J --no-playlist \"" + url + "\" 2>&1";
+            std::string cmd = "yt-dlp.exe -J --no-playlist \"" + url + "\"";
             
-            FILE* pipe = _popen(cmd.c_str(), "r");
-            if (!pipe) {
-                callback(false, {}, "", "HATA: yt-dlp.exe baslatilamadi (_popen failed).");
+            CmdResult execRes = RunCommandHidden(cmd);
+            if (execRes.exitCode == -1 && execRes.output.empty()) {
+                callback(false, {}, "", "HATA: yt-dlp.exe baslatilamadi (CreateProcess failed).");
                 return;
             }
 
-            std::string result = "";
-            char buffer[1024];
-            while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
-                result += buffer;
-            }
-            int retCode = _pclose(pipe);
+            int retCode = execRes.exitCode;
+            std::string result = execRes.output;
 
             try {
                 if (retCode != 0) {
@@ -112,19 +177,10 @@ namespace Utils {
 
             // yt-dlp will merge bestaudio automatically if we ask for it.
             // But since we want to output mp4, we use --merge-output-format mp4
-            std::string cmd = "yt-dlp.exe -f \"" + format_id + "+bestaudio/best\" --merge-output-format mp4 -o \"" + std::string(cacheDirMbs) + "\\%(id)s.%(ext)s\" --newline \"" + url + "\" 2>&1";
+            std::string cmd = "yt-dlp.exe -f \"" + format_id + "+bestaudio/best\" --merge-output-format mp4 -o \"" + std::string(cacheDirMbs) + "\\%(id)s.%(ext)s\" --newline \"" + url + "\"";
             
-            FILE* pipe = _popen(cmd.c_str(), "r");
-            if (!pipe) {
-                callback(false, L"", "HATA: yt-dlp.exe baslatilamadi.");
-                return;
-            }
-
             std::regex progRegex(R"(\[download\]\s+([0-9.]+)%)");
-            std::string result = "";
-            char buffer[1024];
-            while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
-                std::string line = buffer;
+            CmdResult execRes = RunCommandHidden(cmd, [&](const std::string& line) {
                 std::smatch match;
                 if (std::regex_search(line, match, progRegex)) {
                     if (match.size() > 1 && progress) {
@@ -132,20 +188,21 @@ namespace Utils {
                         *progress = pct / 100.0f;
                     }
                 }
-                result += line;
+            });
+
+            if (execRes.exitCode == -1 && execRes.output.empty()) {
+                callback(false, L"", "HATA: yt-dlp.exe baslatilamadi.");
+                return;
             }
-            int retCode = _pclose(pipe);
+
+            int retCode = execRes.exitCode;
+            std::string result = execRes.output;
 
             if (retCode == 0) {
                 // To get the final filename, we can parse it from yt-dlp output or just run a quick -O to get filename
                 std::string nameCmd = "yt-dlp.exe --get-filename --no-warnings -o \"" + std::string(cacheDirMbs) + "\\%(id)s.mp4\" \"" + url + "\"";
-                FILE* np = _popen(nameCmd.c_str(), "r");
-                char nBuf[1024];
-                std::string finalPath = "";
-                while (np && fgets(nBuf, sizeof(nBuf), np) != NULL) {
-                    finalPath = nBuf;
-                }
-                if (np) _pclose(np);
+                CmdResult nameRes = RunCommandHidden(nameCmd);
+                std::string finalPath = nameRes.output;
 
                 if (!finalPath.empty()) {
                     finalPath.erase(finalPath.find_last_not_of(" \n\r\t") + 1);

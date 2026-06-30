@@ -53,6 +53,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <PreprocessorDefinitions>DISABLE_XAML_GENERATED_MAIN;NOMINMAX;WINRT_LEAVE_STUBS_ALONE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(ProjectDir)Generated Files;$(GeneratedFilesDir);$(GeneratedFilesDir)sources;$(ProjectDir)third_party</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -139,7 +140,9 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </Midl>
   </ItemGroup>
-
+  <ItemGroup>
+    <ResourceCompile Include="resource.rc" />
+  </ItemGroup>
   <ItemGroup>
     <Manifest Include="app.manifest" />
   </ItemGroup>

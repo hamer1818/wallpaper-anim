@@ -16,6 +16,7 @@ namespace Config {
         bool pauseOnFullscreen = true;
         bool pauseOnBattery = false;
         bool isFirstRun = true;
+        bool hideMinimizeWarning = false;
         int64_t lastUpdateCheck = 0;
         std::wstring language = L""; // Empty means auto-detect
         std::vector<WallpaperHistoryItem> history;

@@ -116,17 +116,17 @@
                     <StackPanel Spacing="20" MaxWidth="600" HorizontalAlignment="Left">
                         <StackPanel Spacing="4">
                             <ToggleSwitch x:Name="TglBattery" Header="Pil Gücünde Oynatmayı Duraklat" Toggled="TglBattery_Toggled" Foreground="White"/>
-                            <TextBlock Text="Cihaz pildeyken CPU/GPU tasarrufu için duvar kağıdını duraklatır." FontSize="12" Foreground="#AAAAAA"/>
+                            <TextBlock x:Name="TxtTglBatteryDesc" Text="Cihaz pildeyken CPU/GPU tasarrufu için duvar kağıdını duraklatır." FontSize="12" Foreground="#AAAAAA"/>
                         </StackPanel>
 
                         <StackPanel Spacing="4">
                             <ToggleSwitch x:Name="TglFullscreen" Header="Tam Ekranda Oynatmayı Duraklat" Toggled="TglFullscreen_Toggled" Foreground="White"/>
-                            <TextBlock Text="Başka bir uygulama tam ekran olduğunda duvar kağıdını duraklatır." FontSize="12" Foreground="#AAAAAA"/>
+                            <TextBlock x:Name="TxtTglFullscreenDesc" Text="Başka bir uygulama tam ekran olduğunda duvar kağıdını duraklatır." FontSize="12" Foreground="#AAAAAA"/>
                         </StackPanel>
 
                         <StackPanel Spacing="4">
                             <ToggleSwitch x:Name="TglStartup" Header="Windows Başlangıcında Çalıştır" Toggled="TglStartup_Toggled" Foreground="White"/>
-                            <TextBlock Text="Bilgisayar açıldığında uygulamayı otomatik başlatır." FontSize="12" Foreground="#AAAAAA"/>
+                            <TextBlock x:Name="TxtTglStartupDesc" Text="Bilgisayar açıldığında uygulamayı otomatik başlatır." FontSize="12" Foreground="#AAAAAA"/>
                         </StackPanel>
 
                         <StackPanel Spacing="8">

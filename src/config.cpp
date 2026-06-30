@@ -54,6 +54,7 @@ namespace Config {
                 m_config.pauseOnFullscreen = j.value("pauseOnFullscreen", true);
                 m_config.pauseOnBattery = j.value("pauseOnBattery", false);
                 m_config.isFirstRun = j.value("isFirstRun", true);
+                m_config.hideMinimizeWarning = j.value("hideMinimizeWarning", false);
                 m_config.lastUpdateCheck = j.value("lastUpdateCheck", (int64_t)0);
                 if (j.contains("language")) m_config.language = s2ws(j["language"].get<std::string>());
                 
@@ -80,6 +81,7 @@ namespace Config {
         j["pauseOnFullscreen"] = m_config.pauseOnFullscreen;
         j["pauseOnBattery"] = m_config.pauseOnBattery;
         j["isFirstRun"] = m_config.isFirstRun;
+        j["hideMinimizeWarning"] = m_config.hideMinimizeWarning;
         j["lastUpdateCheck"] = m_config.lastUpdateCheck;
         j["language"] = ws2s(m_config.language);
 

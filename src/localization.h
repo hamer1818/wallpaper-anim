@@ -44,13 +44,19 @@ namespace Localization {
         const char* titleLabel;
         const char* qualityLabel;
         const char* downloadPlayBtn;
+        const char* youtubePlaceholder;
 
         // Settings
         const char* performance;
         const char* maxFps;
         const char* powerSaving;
         const char* pauseFullscreen;
+        const char* pauseFullscreenDesc;
         const char* pauseBattery;
+        const char* pauseBatteryDesc;
+        const char* runAtStartup;
+        const char* runAtStartupDesc;
+        const char* languageLabel;
 
         // About
         const char* aboutTitle;
@@ -67,6 +73,11 @@ namespace Localization {
         const char* downloadingUpdate;
         const char* applyingUpdate;
         const char* updateFailed;
+
+        // Minimize Warning
+        const char* minimizeWarningTitle;
+        const char* minimizeWarningDesc;
+        const char* doNotShowAgain;
 
         // Common
         const char* errorTitle;
@@ -86,9 +97,9 @@ namespace Localization {
             "2. Bir video seçin veya YouTube linki yapıştırın.\n",
             "Anladım, başlayalım!",
 
-            "[=] Kütüphane",
-            "[+] Duvar Kağıdı Ekle",
-            "[*] Ayarlar",
+            "Kütüphane",
+            "Duvar Kağıdı Ekle",
+            "Ayarlar",
 
             "Duvar Kağıtlarınız:",
             "Henüz geçmişte duvar kağıdı yok.",
@@ -104,15 +115,21 @@ namespace Localization {
             "Başlık:",
             "Kalite",
             "İndir ve Oynat",
+            "YouTube video bağlantısını yapıştırın (ör. https://www.youtube.com/watch?...)",
 
             "--- PERFORMANS ---",
             "Maks. FPS:",
             "--- GÜÇ TASARRUFU ---",
-            "Tam ekranda duraklat (Oyun modu)",
-            "Pil kullanırken duraklat",
+            "Tam Ekranda Oynatmayı Duraklat",
+            "Başka bir uygulama tam ekran olduğunda duvar kağıdını duraklatır.",
+            "Pil Gücünde Oynatmayı Duraklat",
+            "Cihaz pildeyken CPU/GPU tasarrufu için duvar kağıdını duraklatır.",
+            "Windows Başlangıcında Çalıştır",
+            "Bilgisayar açıldığında uygulamayı otomatik başlatır.",
+            "Dil",
 
             "--- HAKKINDA ---",
-            "Güncellemeyi Kontrol Et",
+            "Uygulama Güncellemesi",
             "Güncellemeler kontrol ediliyor...",
             "Güncelleme Mevcut!",
             "Yeni bir sürüm (%s) mevcut!",
@@ -121,10 +138,14 @@ namespace Localization {
             "Uygulama Güncel",
             "Harika! En güncel sürümü (%s) kullanıyorsunuz.",
 
-            "Güncelle",
+            "Güncellemeleri Kontrol Et",
             "Güncelleme indiriliyor...",
             "Güncelleme uygulanıyor, uygulama yeniden başlatılacak...",
             "Güncelleme sırasında hata oluştu.",
+
+            "Uygulama Küçültüldü",
+            "Uygulama arka planda çalışmaya devam edecek ve sistem tepsisinden erişilebilecek.",
+            "Bir daha gösterme",
 
             "Hata Oluştu",
             "Tamam",
@@ -142,9 +163,9 @@ namespace Localization {
             "2. Select a video or paste a YouTube link.\n",
             "Got it, let's go!",
 
-            "[=] Library",
-            "[+] Add New",
-            "[*] Settings",
+            "Library",
+            "Add New Wallpaper",
+            "Settings",
 
             "Your Wallpapers:",
             "No wallpapers in your history yet.",
@@ -160,15 +181,21 @@ namespace Localization {
             "Title:",
             "Quality",
             "Download & Play",
+            "Paste YouTube video link (e.g. https://www.youtube.com/watch?...)",
 
             "--- PERFORMANCE ---",
             "Max FPS:",
             "--- POWER SAVING ---",
-            "Pause on Fullscreen (Gaming)",
+            "Pause on Fullscreen",
+            "Pauses the wallpaper when another app goes fullscreen.",
             "Pause on Battery Power",
+            "Pauses the wallpaper to save CPU/GPU when on battery.",
+            "Run at Windows Startup",
+            "Automatically starts the app when the computer boots.",
+            "Language",
 
             "--- ABOUT ---",
-            "Check for Updates",
+            "Application Update",
             "Checking for updates...",
             "Update Available!",
             "A new version (%s) is available!",
@@ -177,10 +204,14 @@ namespace Localization {
             "App is Up to Date",
             "Great! You are using the latest version (%s).",
 
-            "Update",
+            "Check for Updates",
             "Downloading update...",
             "Applying update, app will restart...",
             "Update failed.",
+
+            "App Minimized",
+            "The app will continue running in the background and can be accessed from the system tray.",
+            "Do not show again",
 
             "Error",
             "OK",

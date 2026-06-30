@@ -83,12 +83,61 @@ namespace winrt::WallpaperAnimWinUI::implementation
         LogApp("MainWindow: Refreshing Library");
         RefreshLibrary();
         LogApp("MainWindow: Exiting constructor");
+
+        // Set Window Icon
+        HWND hwnd = GetWindowHandle();
+        HICON hIcon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(101)); // IDI_APP_ICON
+        if (hwnd && hIcon) {
+            SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+            SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+            LogApp("MainWindow: Window icon set via WM_SETICON");
+        }
     }
 
     void MainWindow::OnAppWindowClosing(winrt::Microsoft::UI::Windowing::AppWindow const& sender, winrt::Microsoft::UI::Windowing::AppWindowClosingEventArgs const& args)
     {
         args.Cancel(true);
-        sender.Hide();
+        if (!Config::ConfigManager::GetInstance().GetConfig().hideMinimizeWarning) {
+            ShowMinimizeWarningDialog();
+        } else {
+            sender.Hide();
+        }
+    }
+
+    winrt::fire_and_forget MainWindow::ShowMinimizeWarningDialog()
+    {
+        auto lifetime = get_strong();
+        auto& strings = Localization::Get();
+
+        winrt::Microsoft::UI::Xaml::Controls::ContentDialog dialog;
+        dialog.XamlRoot(this->Content().XamlRoot());
+        dialog.Title(box_value(winrt::to_hstring(strings.minimizeWarningTitle)));
+        dialog.PrimaryButtonText(winrt::to_hstring(strings.okBtn));
+
+        winrt::Microsoft::UI::Xaml::Controls::StackPanel sp;
+        sp.Spacing(12);
+
+        winrt::Microsoft::UI::Xaml::Controls::TextBlock tb;
+        tb.Text(winrt::to_hstring(strings.minimizeWarningDesc));
+        tb.TextWrapping(winrt::Microsoft::UI::Xaml::TextWrapping::Wrap);
+        sp.Children().Append(tb);
+
+        winrt::Microsoft::UI::Xaml::Controls::CheckBox cb;
+        cb.Content(box_value(winrt::to_hstring(strings.doNotShowAgain)));
+        sp.Children().Append(cb);
+
+        dialog.Content(sp);
+
+        co_await dialog.ShowAsync();
+
+        auto isChecked = cb.IsChecked();
+        if (isChecked && isChecked.GetBoolean()) {
+            auto& config = Config::ConfigManager::GetInstance().GetConfig();
+            config.hideMinimizeWarning = true;
+            Config::ConfigManager::GetInstance().Save();
+        }
+
+        this->AppWindow().Hide();
     }
 
     HWND MainWindow::GetWindowHandle()
@@ -126,10 +175,16 @@ namespace winrt::WallpaperAnimWinUI::implementation
         // YouTube UI
         TxtYoutubeTitle().Text(winrt::to_hstring(strings.youtubeVideo));
         BtnDownload().Content(box_value(winrt::to_hstring(strings.downloadPlayBtn)));
+        TxtYoutubeUrl().PlaceholderText(winrt::to_hstring(strings.youtubePlaceholder));
 
         // Settings toggles
         TglBattery().Header(box_value(winrt::to_hstring(strings.pauseBattery)));
+        TxtTglBatteryDesc().Text(winrt::to_hstring(strings.pauseBatteryDesc));
         TglFullscreen().Header(box_value(winrt::to_hstring(strings.pauseFullscreen)));
+        TxtTglFullscreenDesc().Text(winrt::to_hstring(strings.pauseFullscreenDesc));
+        TglStartup().Header(box_value(winrt::to_hstring(strings.runAtStartup)));
+        TxtTglStartupDesc().Text(winrt::to_hstring(strings.runAtStartupDesc));
+        TxtLanguageLabel().Text(winrt::to_hstring(strings.languageLabel));
 
         // Update UI
         TxtUpdateHeader().Text(winrt::to_hstring(strings.checkUpdate));
