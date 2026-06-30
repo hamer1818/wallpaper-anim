@@ -60,6 +60,12 @@ namespace Localization {
         const char* appUpToDateTitle;
         const char* appUpToDateMsg; // format: "You are using the latest version (%s)."
 
+        // Auto-Update
+        const char* updateBtn;
+        const char* updatingMsg;
+        const char* updateApplyingMsg;
+        const char* updateFailedMsg;
+
         // Error
         const char* errorTitle;
         const char* okBtn;
@@ -113,6 +119,11 @@ namespace Localization {
             "Uygulama Guncel",
             "Harika! En guncel surumu (%s) kullaniyorsunuz.",
 
+            "Guncelle",
+            "Guncelleme indiriliyor...",
+            "Guncelleme uygulaniyor, uygulama yeniden baslatilacak...",
+            "Guncelleme sirasinda hata olustu.",
+
             "Hata Olustu",
             "Tamam",
             "Kapat",
@@ -163,6 +174,11 @@ namespace Localization {
             "Download",
             "App is Up to Date",
             "Great! You are using the latest version (%s).",
+
+            "Update",
+            "Downloading update...",
+            "Applying update, app will restart...",
+            "Update failed.",
 
             "Error",
             "OK",

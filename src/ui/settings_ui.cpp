@@ -408,6 +408,17 @@ void SettingsUI::RenderUI() {
         ImGui::EndPopup();
     }
 
+    // Process auto-update download callbacks on main thread
+    if (m_updateDownloadComplete) {
+        m_updateDownloadComplete = false;
+        if (!m_updateDownloadSuccess) {
+            m_lastErrorMsg = m_updateDownloadError.empty() ? L.updateFailedMsg : m_updateDownloadError;
+            m_showError = true;
+            m_updateDownloading = false;
+        }
+        // On success, the app will have already exited via ExitProcess
+    }
+
     if (m_showUpdatePopup) {
         if (!m_updateInfo.errorMessage.empty()) {
             m_lastErrorMsg = m_updateInfo.errorMessage;
@@ -421,23 +432,53 @@ void SettingsUI::RenderUI() {
     }
 
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSizeConstraints(ImVec2(300, -1), ImVec2(600, -1));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(350, -1), ImVec2(600, -1));
     if (ImGui::BeginPopupModal("##UpdateAvailable", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("%s", L.updateAvailableTitle);
         ImGui::Separator();
         ImGui::Spacing();
         ImGui::Text(L.updateAvailableMsg, m_updateInfo.version.c_str());
         ImGui::Spacing();
-        ImGui::Text("%s", L.updateDownloadHint);
-        ImGui::Separator();
-        ImGui::Spacing();
-        if (ImGui::Button(L.downloadBtn, ImVec2(120, 0))) {
-            ShellExecuteA(NULL, "open", m_updateInfo.releaseUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button(L.cancelBtn, ImVec2(120, 0))) {
-            ImGui::CloseCurrentPopup();
+
+        if (m_updateDownloading) {
+            // Show progress bar while downloading
+            ImGui::Text("%s", L.updatingMsg);
+            ImGui::ProgressBar(m_updateProgress.load(), ImVec2(-1.0f, 0.0f));
+            if (m_updateProgress.load() >= 0.99f) {
+                ImGui::Text("%s", L.updateApplyingMsg);
+            }
+        } else {
+            ImGui::Text("%s", L.updateDownloadHint);
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // Auto-update button (downloads and applies)
+            if (!m_updateInfo.downloadUrl.empty()) {
+                if (ImGui::Button(L.updateBtn, ImVec2(140, 0))) {
+                    m_updateDownloading = true;
+                    m_updateProgress = 0.0f;
+                    Utils::UpdateChecker::DownloadAndApplyUpdateAsync(
+                        m_updateInfo.downloadUrl,
+                        &m_updateProgress,
+                        [this](bool success, const std::string& err) {
+                            m_updateDownloadSuccess = success;
+                            m_updateDownloadError = err;
+                            m_updateDownloadComplete = true;
+                        }
+                    );
+                }
+                ImGui::SameLine();
+            }
+
+            // Fallback: open in browser
+            if (ImGui::Button(L.downloadBtn, ImVec2(140, 0))) {
+                ShellExecuteA(NULL, "open", m_updateInfo.releaseUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(L.cancelBtn, ImVec2(120, 0))) {
+                ImGui::CloseCurrentPopup();
+            }
         }
         ImGui::EndPopup();
     }

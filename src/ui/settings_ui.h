@@ -78,6 +78,13 @@ private:
     void CheckForUpdate(bool showPopupIfUpToDate);
     bool m_showUpdateUpToDate = false;
 
+    // Auto-Update Download State
+    bool m_updateDownloading = false;
+    std::atomic<float> m_updateProgress{0.0f};
+    bool m_updateDownloadComplete = false;
+    bool m_updateDownloadSuccess = false;
+    std::string m_updateDownloadError;
+
     // Thumbnail Cache
     std::map<std::wstring, ComPtr<ID3D11ShaderResourceView>> m_thumbnails;
     ID3D11ShaderResourceView* GetThumbnailSRV(const std::wstring& thumbPath);
