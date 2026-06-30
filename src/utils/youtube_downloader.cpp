@@ -14,6 +14,34 @@ namespace {
         std::string output;
     };
 
+    // Resolve the directory the running executable lives in (NOT the current
+    // working directory, which may be System32 when launched from a shortcut
+    // or from the Windows autostart registry key).
+    std::wstring GetExeDirW() {
+        wchar_t path[MAX_PATH];
+        GetModuleFileNameW(NULL, path, MAX_PATH);
+        wchar_t* lastSlash = wcsrchr(path, L'\\');
+        if (lastSlash) *(lastSlash + 1) = L'\0';
+        return path;
+    }
+
+    std::wstring GetYtDlpPathW() {
+        return GetExeDirW() + L"yt-dlp.exe";
+    }
+
+    // ANSI (CP_ACP) narrow path, matching what CreateProcessA expects.
+    std::string ToAnsi(const std::wstring& ws) {
+        int len = WideCharToMultiByte(CP_ACP, 0, ws.c_str(), -1, NULL, 0, NULL, NULL);
+        if (len <= 0) return "";
+        std::string s(len - 1, '\0');
+        WideCharToMultiByte(CP_ACP, 0, ws.c_str(), -1, &s[0], len, NULL, NULL);
+        return s;
+    }
+
+    std::string GetYtDlpPathA() {
+        return ToAnsi(GetYtDlpPathW());
+    }
+
     CmdResult RunCommandHidden(const std::string& cmd, std::function<void(const std::string&)> onLine = nullptr) {
         CmdResult res = { -1, "" };
         SECURITY_ATTRIBUTES sa;
@@ -94,13 +122,13 @@ namespace Utils {
 
     void YouTubeDownloader::FetchResolutionsAsync(const std::string& url, std::function<void(bool, const std::vector<YouTubeResolution>&, const std::string&, const std::string&)> callback) {
         std::thread([url, callback]() {
-            // Check if yt-dlp.exe exists
-            if (GetFileAttributesA("yt-dlp.exe") == INVALID_FILE_ATTRIBUTES) {
+            // Check if yt-dlp.exe exists next to the executable
+            if (GetFileAttributesW(GetYtDlpPathW().c_str()) == INVALID_FILE_ATTRIBUTES) {
                 callback(false, {}, "", "HATA: yt-dlp.exe bulunamadi! Lutfen uygulamanin bulundugu klasorde yt-dlp.exe oldugundan emin olun.");
                 return;
             }
 
-            std::string cmd = "yt-dlp.exe -J --no-playlist \"" + url + "\"";
+            std::string cmd = "\"" + GetYtDlpPathA() + "\" -J --no-playlist \"" + url + "\"";
             
             CmdResult execRes = RunCommandHidden(cmd);
             if (execRes.exitCode == -1 && execRes.output.empty()) {
@@ -167,17 +195,21 @@ namespace Utils {
     void YouTubeDownloader::DownloadAsync(const std::string& url, const std::string& format_id, std::atomic<float>* progress, std::function<void(bool, const std::wstring&, const std::string&)> callback) {
         std::thread([url, format_id, progress, callback]() {
             std::wstring cacheDir = GetCacheDirectory();
-            char cacheDirMbs[512];
-            WideCharToMultiByte(CP_UTF8, 0, cacheDir.c_str(), -1, cacheDirMbs, sizeof(cacheDirMbs), NULL, NULL);
+            // Use CP_ACP (not CP_UTF8): the command line is passed to CreateProcessA,
+            // so the path must be in the system ANSI codepage. The cache dir lives
+            // under %LocalAppData%, which contains the (possibly non-ASCII) user name.
+            std::string cacheDirMbs = ToAnsi(cacheDir);
 
-            if (GetFileAttributesA("yt-dlp.exe") == INVALID_FILE_ATTRIBUTES) {
+            if (GetFileAttributesW(GetYtDlpPathW().c_str()) == INVALID_FILE_ATTRIBUTES) {
                 callback(false, L"", "HATA: yt-dlp.exe bulunamadi!");
                 return;
             }
 
+            std::string ytDlp = GetYtDlpPathA();
+
             // yt-dlp will merge bestaudio automatically if we ask for it.
             // But since we want to output mp4, we use --merge-output-format mp4
-            std::string cmd = "yt-dlp.exe -f \"" + format_id + "+bestaudio/best\" --merge-output-format mp4 -o \"" + std::string(cacheDirMbs) + "\\%(id)s.%(ext)s\" --newline \"" + url + "\"";
+            std::string cmd = "\"" + ytDlp + "\" -f \"" + format_id + "+bestaudio/best\" --merge-output-format mp4 -o \"" + cacheDirMbs + "\\%(id)s.%(ext)s\" --newline \"" + url + "\"";
             
             std::regex progRegex(R"(\[download\]\s+([0-9.]+)%)");
             CmdResult execRes = RunCommandHidden(cmd, [&](const std::string& line) {
@@ -200,7 +232,7 @@ namespace Utils {
 
             if (retCode == 0) {
                 // To get the final filename, we can parse it from yt-dlp output or just run a quick -O to get filename
-                std::string nameCmd = "yt-dlp.exe --get-filename --no-warnings -o \"" + std::string(cacheDirMbs) + "\\%(id)s.mp4\" \"" + url + "\"";
+                std::string nameCmd = "\"" + ytDlp + "\" --get-filename --no-warnings -o \"" + cacheDirMbs + "\\%(id)s.mp4\" \"" + url + "\"";
                 CmdResult nameRes = RunCommandHidden(nameCmd);
                 std::string finalPath = nameRes.output;
 

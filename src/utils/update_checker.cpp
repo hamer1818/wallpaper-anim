@@ -316,11 +316,11 @@ namespace Utils {
 
         // Find the actual content folder inside extracted folder.
         // The ZIP may contain files directly or inside a subfolder.
-        // We look for WallpaperAnim.exe to determine the source directory.
+        // We look for WallpaperAnimWinUI.exe to determine the source directory.
         std::wstring sourceDir = extractedFolder;
 
         // Check if exe is directly in extractedFolder
-        std::wstring testExe = extractedFolder + L"\\WallpaperAnim.exe";
+        std::wstring testExe = extractedFolder + L"\\WallpaperAnimWinUI.exe";
         if (GetFileAttributesW(testExe.c_str()) == INVALID_FILE_ATTRIBUTES) {
             // Search one level of subdirectories
             WIN32_FIND_DATAW fd;
@@ -331,7 +331,7 @@ namespace Utils {
                     if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
                         wcscmp(fd.cFileName, L".") != 0 &&
                         wcscmp(fd.cFileName, L"..") != 0) {
-                        std::wstring subTest = extractedFolder + L"\\" + fd.cFileName + L"\\WallpaperAnim.exe";
+                        std::wstring subTest = extractedFolder + L"\\" + fd.cFileName + L"\\WallpaperAnimWinUI.exe";
                         if (GetFileAttributesW(subTest.c_str()) != INVALID_FILE_ATTRIBUTES) {
                             sourceDir = extractedFolder + L"\\" + fd.cFileName;
                             break;

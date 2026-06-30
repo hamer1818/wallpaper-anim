@@ -10,6 +10,7 @@
 #include "src/utils/thumbnail_generator.h"
 #include "src/utils/youtube_downloader.h"
 #include "src/utils/update_checker.h"
+#include "src/version.h"
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
 #include <winrt/Microsoft.UI.Dispatching.h>
 #include <winrt/Windows.Storage.Pickers.h>
@@ -45,6 +46,9 @@ namespace winrt::WallpaperAnimWinUI::implementation
         } catch (...) {
             LogApp("MainWindow: MicaBackdrop failed (handled)");
         }
+
+        // Show the real app version from a single source of truth (version.h)
+        TxtAppVersion().Text(L"v" APP_VERSION_STRING_W);
 
         LogApp("MainWindow: Loading Config");
         // Initialize Settings from Config
