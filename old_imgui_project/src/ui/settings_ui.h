@@ -9,6 +9,7 @@ using Microsoft::WRL::ComPtr;
 
 #include "utils/youtube_downloader.h"
 #include "utils/update_checker.h"
+#include "utils/preview_player.h"
 #include <map>
 #include <atomic>
 #include <vector>
@@ -88,6 +89,8 @@ private:
     // Thumbnail Cache
     std::map<std::wstring, ComPtr<ID3D11ShaderResourceView>> m_thumbnails;
     ID3D11ShaderResourceView* GetThumbnailSRV(const std::wstring& thumbPath);
+
+    Utils::PreviewPlayer m_previewPlayer;
 
     ComPtr<ID3D11ShaderResourceView> m_logoSrv;
     int m_logoWidth = 0;

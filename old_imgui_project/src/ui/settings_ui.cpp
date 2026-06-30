@@ -62,6 +62,8 @@ bool SettingsUI::Initialize(HINSTANCE hInstance, ID3D11Device* device, HWND main
     ImGui_ImplWin32_Init(m_hwnd);
     ImGui_ImplDX11_Init(m_device.Get(), m_context.Get());
 
+    m_previewPlayer.Initialize(m_device.Get(), m_context.Get());
+
     ImGuiIO& io = ImGui::GetIO();
     // Disable INI file
     io.IniFilename = nullptr;
@@ -136,6 +138,7 @@ bool SettingsUI::Initialize(HINSTANCE hInstance, ID3D11Device* device, HWND main
 
 void SettingsUI::Cleanup() {
     if (m_imguiInitialized) {
+        m_previewPlayer.Stop();
         ImGui_ImplDX11_Shutdown();
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext();
@@ -325,6 +328,9 @@ void SettingsUI::RenderUI() {
     auto& config = configManager.GetConfig();
     bool changed = false;
 
+    // Update preview player
+    m_previewPlayer.Update();
+
     // Process Async Callbacks on Main Thread
     if (m_ytFetchComplete) {
         m_ytFetching = false;
@@ -506,49 +512,100 @@ void SettingsUI::RenderUI() {
             ImGui::Separator();
             ImGui::BeginChild("LibraryScroll", ImVec2(0, ImGui::GetContentRegionAvail().y - 45));
             
+            // Lively-Style Library Cards
             float window_visible_x2 = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
             ImGuiStyle& style = ImGui::GetStyle();
             
             int id = 0;
+            bool anyHovered = false;
+
             auto it = config.history.begin();
             while (it != config.history.end()) {
                 ImGui::PushID(id++);
                 
-                ID3D11ShaderResourceView* srv = GetThumbnailSRV(it->thumbPath);
-                ImTextureID tex_id = srv ? (ImTextureID)srv : 0;
-                
-                // Group thumbnail and delete button
-                ImGui::BeginGroup();
-                
                 ImVec2 p0 = ImGui::GetCursorScreenPos();
-                ImVec2 sz = ImVec2(240, 135);
+                ImVec2 sz = ImVec2(240, 135); // 16:9 aspect ratio
                 ImVec2 p1 = ImVec2(p0.x + sz.x, p0.y + sz.y);
                 
-                // Add a hover background rect spanning thumbnail and button
-                bool isHovered = ImGui::IsMouseHoveringRect(ImVec2(p0.x, p0.y), ImVec2(p1.x, p1.y + 36));
+                // Add a dummy area for the whole card
+                ImGui::InvisibleButton("##CardArea", sz);
+                bool isHovered = ImGui::IsItemHovered();
+                bool isClicked = ImGui::IsItemClicked();
+
                 if (isHovered) {
-                    ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(p0.x - 6, p0.y - 6), ImVec2(p1.x + 6, p1.y + 40), IM_COL32(50, 50, 50, 255), 8.0f);
-                    ImGui::GetWindowDrawList()->AddRect(ImVec2(p0.x - 6, p0.y - 6), ImVec2(p1.x + 6, p1.y + 40), IM_COL32(0, 180, 230, 255), 8.0f, 0, 2.0f);
+                    anyHovered = true;
+                    if (!m_previewPlayer.IsPlaying() || m_previewPlayer.GetCurrentPath() != it->path) {
+                        m_previewPlayer.Start(it->path);
+                    }
                 }
 
-                if (ImGui::ImageButton("##Thumb", tex_id, sz)) { // 16:9 aspect ratio
+                if (isClicked) {
                     PlayMedia(it->path);
                 }
-                if (ImGui::IsItemHovered()) {
-                    char nameUtf8[256];
-                    WideCharToMultiByte(CP_UTF8, 0, it->name.c_str(), -1, nameUtf8, sizeof(nameUtf8), NULL, NULL);
-                    ImGui::SetTooltip("%s\n(Click to Play)", nameUtf8);
-                }
                 
-                if (ImGui::Button(L.remove, ImVec2(240, 28))) {
-                    it = config.history.erase(it);
-                    changed = true;
-                    ImGui::EndGroup();
-                    ImGui::PopID();
-                    continue;
+                // Decide which texture to show (thumbnail vs live preview)
+                ID3D11ShaderResourceView* currentSrv = nullptr;
+                if (isHovered && m_previewPlayer.IsPlaying() && m_previewPlayer.GetCurrentPath() == it->path && m_previewPlayer.GetFrameSRV()) {
+                    currentSrv = m_previewPlayer.GetFrameSRV();
+                } else {
+                    currentSrv = GetThumbnailSRV(it->thumbPath);
                 }
-                ImGui::EndGroup();
+
+                ImDrawList* draw_list = ImGui::GetWindowDrawList();
                 
+                // Draw background and outline
+                draw_list->AddRectFilled(p0, p1, IM_COL32(30, 30, 30, 255), 8.0f);
+                if (isHovered) {
+                    // Glow effect on hover
+                    draw_list->AddRect(ImVec2(p0.x - 2, p0.y - 2), ImVec2(p1.x + 2, p1.y + 2), IM_COL32(0, 180, 230, 255), 10.0f, 0, 2.0f);
+                } else {
+                    draw_list->AddRect(p0, p1, IM_COL32(60, 60, 60, 255), 8.0f, 0, 1.0f);
+                }
+
+                // Draw Image
+                if (currentSrv) {
+                    draw_list->AddImageRounded((ImTextureID)currentSrv, p0, p1, ImVec2(0,0), ImVec2(1,1), IM_COL32_WHITE, 8.0f);
+                }
+
+                // Draw Bottom Gradient Overlay
+                ImU32 col_top = IM_COL32(0, 0, 0, 0);
+                ImU32 col_bottom = IM_COL32(0, 0, 0, 220);
+                draw_list->AddRectFilledMultiColor(
+                    ImVec2(p0.x, p1.y - 40), ImVec2(p1.x, p1.y),
+                    col_top, col_top, col_bottom, col_bottom
+                );
+                
+                // Title and Menu text
+                char nameUtf8[256];
+                WideCharToMultiByte(CP_UTF8, 0, it->name.c_str(), -1, nameUtf8, sizeof(nameUtf8), NULL, NULL);
+                
+                draw_list->AddText(ImVec2(p0.x + 8, p1.y - 24), IM_COL32(255, 255, 255, 255), nameUtf8);
+
+                // Simple "..." menu button area
+                ImVec2 menuBtnP0 = ImVec2(p1.x - 28, p1.y - 28);
+                ImVec2 menuBtnP1 = ImVec2(p1.x - 4, p1.y - 4);
+                bool menuHovered = ImGui::IsMouseHoveringRect(menuBtnP0, menuBtnP1);
+                
+                if (menuHovered) {
+                    draw_list->AddRectFilled(menuBtnP0, menuBtnP1, IM_COL32(255,255,255,50), 4.0f);
+                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                        ImGui::OpenPopup("CardMenu");
+                    }
+                }
+                draw_list->AddText(ImVec2(menuBtnP0.x + 5, menuBtnP0.y + 2), IM_COL32(200, 200, 200, 255), "...");
+
+                // Right-click menu / ... menu popup
+                if (ImGui::BeginPopup("CardMenu")) {
+                    if (ImGui::MenuItem(L.remove)) {
+                        it = config.history.erase(it);
+                        changed = true;
+                        ImGui::EndPopup();
+                        ImGui::PopID();
+                        continue;
+                    }
+                    ImGui::EndPopup();
+                }
+
                 float last_button_x2 = ImGui::GetItemRectMax().x;
                 float next_button_x2 = last_button_x2 + style.ItemSpacing.x + 240.0f; // Expected next item width
                 if (id < (int)config.history.size() && next_button_x2 < window_visible_x2)
@@ -556,6 +613,11 @@ void SettingsUI::RenderUI() {
                 
                 ++it;
                 ImGui::PopID();
+            }
+
+            // Stop preview if no card is hovered
+            if (!anyHovered && m_previewPlayer.IsPlaying()) {
+                m_previewPlayer.Stop();
             }
             
             ImGui::EndChild();

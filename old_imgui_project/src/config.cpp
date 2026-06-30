@@ -55,7 +55,6 @@ namespace Config {
                 m_config.pauseOnBattery = j.value("pauseOnBattery", false);
                 m_config.isFirstRun = j.value("isFirstRun", true);
                 m_config.lastUpdateCheck = j.value("lastUpdateCheck", (int64_t)0);
-                if (j.contains("language")) m_config.language = s2ws(j["language"].get<std::string>());
                 
                 if (j.contains("history") && j["history"].is_array()) {
                     for (auto& item : j["history"]) {
@@ -72,7 +71,7 @@ namespace Config {
             }
         }
     }
- 
+
     void ConfigManager::Save() {
         json j;
         j["lastVideoPath"] = ws2s(m_config.lastVideoPath);
@@ -81,7 +80,6 @@ namespace Config {
         j["pauseOnBattery"] = m_config.pauseOnBattery;
         j["isFirstRun"] = m_config.isFirstRun;
         j["lastUpdateCheck"] = m_config.lastUpdateCheck;
-        j["language"] = ws2s(m_config.language);
 
         json historyArray = json::array();
         for (const auto& h : m_config.history) {

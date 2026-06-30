@@ -1,6 +1,5 @@
 #include "tray.h"
 #include "resource.h"
-#include "localization.h"
 
 namespace SystemTray {
 
@@ -45,40 +44,20 @@ namespace SystemTray {
         }
     }
 
-    std::wstring Utf8ToWide(const char* utf8Str) {
-        if (!utf8Str || !*utf8Str) return L"";
-        int size_needed = MultiByteToWideChar(CP_UTF8, 0, utf8Str, -1, NULL, 0);
-        std::wstring wstrTo(size_needed, 0);
-        MultiByteToWideChar(CP_UTF8, 0, utf8Str, -1, &wstrTo[0], size_needed);
-        wstrTo.pop_back(); // remove null terminator
-        return wstrTo;
-    }
-
     void TrayIcon::ShowContextMenu() {
         POINT pt;
         GetCursorPos(&pt);
 
-        auto& strings = Localization::Get();
-
         HMENU hMenu = CreatePopupMenu();
-        
-        // Play/Pause
         if (m_isPaused) {
-            AppendMenuW(hMenu, MF_STRING, ID_TRAY_PLAY, L"Play");
+            AppendMenu(hMenu, MF_STRING, ID_TRAY_PLAY, L"Play");
         } else {
-            AppendMenuW(hMenu, MF_STRING, ID_TRAY_PAUSE, L"Pause");
+            AppendMenu(hMenu, MF_STRING, ID_TRAY_PAUSE, L"Pause");
         }
-        AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-        
-        // Show UI
-        std::wstring showUiText = Utf8ToWide(strings.settingsTitle);
-        AppendMenuW(hMenu, MF_STRING, ID_TRAY_SETTINGS, showUiText.c_str());
-        
-        AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-        
-        // Exit
-        std::wstring exitText = Utf8ToWide(strings.close);
-        AppendMenuW(hMenu, MF_STRING, ID_TRAY_EXIT, exitText.c_str());
+        AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
+        AppendMenu(hMenu, MF_STRING, ID_TRAY_SETTINGS, L"Settings...");
+        AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
+        AppendMenu(hMenu, MF_STRING, ID_TRAY_EXIT, L"Exit");
 
         // Required to prevent the menu from staying open if clicking elsewhere
         SetForegroundWindow(m_hwnd);

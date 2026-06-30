@@ -8,7 +8,6 @@
 #include <shlwapi.h>
 #include <fstream>
 #include <vector>
-#include <algorithm>
 
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "shlwapi.lib")
@@ -184,7 +183,7 @@ namespace Utils {
                     if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) break;
                     if (dwSize == 0) break;
 
-                    DWORD toRead = std::min(dwSize, (DWORD)sizeof(buffer));
+                    DWORD toRead = min(dwSize, (DWORD)sizeof(buffer));
                     if (WinHttpReadData(hRequest, buffer, toRead, &dwDownloaded)) {
                         outFile.write(buffer, dwDownloaded);
                         totalRead += dwDownloaded;

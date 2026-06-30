@@ -1,9 +1,6 @@
 #pragma once
 #include <windows.h>
 #include <string>
-#include "config.h"
-
-#pragma execution_character_set("utf-8")
 
 namespace Localization {
 
@@ -52,81 +49,82 @@ namespace Localization {
         const char* pauseFullscreen;
         const char* pauseBattery;
 
-        // About
-        const char* aboutTitle;
+        // About / Update
+        const char* about;
         const char* checkUpdate;
         const char* checkingUpdate;
-        const char* updateAvailable;
-        const char* newVersionAvailable;
-        const char* clickToDownload;
+        const char* updateAvailableTitle;
+        const char* updateAvailableMsg; // format: "New version (%s) available!"
+        const char* updateDownloadHint;
         const char* downloadBtn;
-        const char* appUpToDate;
-        const char* usingLatestVersion;
-        
-        const char* updateBtn;
-        const char* downloadingUpdate;
-        const char* applyingUpdate;
-        const char* updateFailed;
+        const char* appUpToDateTitle;
+        const char* appUpToDateMsg; // format: "You are using the latest version (%s)."
 
-        // Common
+        // Auto-Update
+        const char* updateBtn;
+        const char* updatingMsg;
+        const char* updateApplyingMsg;
+        const char* updateFailedMsg;
+
+        // Error
         const char* errorTitle;
         const char* okBtn;
-        const char* close;
+        const char* cancelBtn;
     };
 
     inline const Strings& Get() {
         static const Strings tr = {
-            "WallpaperAnim Ayarları",
+            "WallpaperAnim Ayarlar",
             "Kapat",
 
-            "WallpaperAnim'e Hoş Geldiniz!",
-            "Merhaba! WallpaperAnim'i yüklediğiniz için teşekkürler.\n\n"
-            "İlk hareketli duvar kağıdınızı ayarlamak için:\n"
-            "1. 'Duvar Kağıdı Ekle' sekmesine gidin.\n"
-            "2. Bir video seçin veya YouTube linki yapıştırın.\n",
-            "Anladım, başlayalım!",
+            "WallpaperAnim'e Hos Geldiniz!",
+            "Merhaba! WallpaperAnim'i kurdugunuz icin tesekkurler.\n\n"
+            "Ilk animasyonlu arka planinizi ayarlamak icin:\n"
+            "1. 'Yeni Ekle' sekmesine gidin.\n"
+            "2. Bir video secin veya YouTube linki yapistirin.\n",
+            "Anladim, Baslayalim!",
 
-            "[=] Kütüphane",
-            "[+] Duvar Kağıdı Ekle",
+            "[=] Kutuphane",
+            "[+] Yeni Ekle",
             "[*] Ayarlar",
 
-            "Duvar Kağıtlarınız:",
-            "Henüz geçmişte duvar kağıdı yok.",
-            "Kaldır",
+            "Duvar Kagitlariniz:",
+            "Henuz gecmisinizde duvar kagidi yok.",
+            "Kaldir",
 
             "Yerel Dosya",
-            "Bilgisayardan Seç:",
-            "Gözat...",
-            "YouTube Videosu",
+            "Bilgisayardan Sec:",
+            "Gozat...",
+            "YouTube Video",
             "URL:",
             "Getir",
-            "Çözünürlükler getiriliyor... Lütfen bekleyin.",
-            "Başlık:",
+            "Cozunurlukler getiriliyor... Lutfen bekleyin.",
+            "Baslik:",
             "Kalite",
-            "İndir ve Oynat",
+            "Indir ve Oynat",
 
             "--- PERFORMANS ---",
             "Maks. FPS:",
-            "--- GÜÇ TASARRUFU ---",
+            "--- GUC TASARRUFU ---",
             "Tam ekranda duraklat (Oyun modu)",
-            "Pil kullanırken duraklat",
+            "Pil kullanirken duraklat",
 
             "--- HAKKINDA ---",
-            "Güncellemeyi Kontrol Et",
-            "Güncellemeler kontrol ediliyor...",
-            "Güncelleme Mevcut!",
-            "Yeni bir sürüm (%s) mevcut!",
-            "İndirmek için aşağıdaki butona tıklayabilirsiniz.",
-            "İndir",
-            "Uygulama Güncel",
-            "Harika! En güncel sürümü (%s) kullanıyorsunuz.",
+            "Guncellemeyi Kontrol Et",
+            "Guncellemeler kontrol ediliyor...",
+            "Guncelleme Mevcut!",
+            "Yeni bir surum (%s) mevcut!",
+            "Indirmek icin asagidaki butona tiklayabilirsiniz.",
+            "Indir",
+            "Uygulama Guncel",
+            "Harika! En guncel surumu (%s) kullaniyorsunuz.",
 
-            "Güncelle",
-            "Güncelleme indiriliyor...",
-            "Güncelleme uygulanıyor, uygulama yeniden başlatılacak...",
-            "Güncelleme sırasında hata oluştu.",
+            "Guncelle",
+            "Guncelleme indiriliyor...",
+            "Guncelleme uygulaniyor, uygulama yeniden baslatilacak...",
+            "Guncelleme sirasinda hata olustu.",
 
-            "Hata Oluştu",
+            "Hata Olustu",
             "Tamam",
             "Kapat",
         };
@@ -187,14 +185,8 @@ namespace Localization {
             "Close",
         };
 
-        std::wstring lang = Config::ConfigManager::GetInstance().GetConfig().language;
-        if (lang.empty()) {
-            return IsSystemTurkish() ? tr : en;
-        } else if (lang == L"tr") {
-            return tr;
-        } else {
-            return en;
-        }
+        static const bool isTR = IsSystemTurkish();
+        return isTR ? tr : en;
     }
 
 } // namespace Localization

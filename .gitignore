@@ -20,3 +20,7 @@ yt-dlp.exe
 .gemini/
 convert.py
 IMPLEMENTATION_PLAN.md
+x64/ 
+packages/ 
+Generated Files/ 
+winui_samples/ 
