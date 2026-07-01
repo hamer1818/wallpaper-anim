@@ -1,27 +1,40 @@
-# Build artifacts
+# Build output
 build/
+x64/
+Generated Files/
 *.obj
 *.res
 *.exe
 *.dll
+*.pdb
+*.ilk
+*.exp
+*.lib
 
-# IDE
+# Visual Studio / IDE
 .vs/
 *.user
 
-# Large binaries (fetched by CI / placed manually; never committed)
+# NuGet packages (restored on build)
+packages/
+
+# Large binaries — fetched by CI or placed manually; never committed
 yt-dlp.exe
 ffmpeg.exe
+ffprobe.exe
 
-# Archives
+# Packaging intermediates and outputs
+SetupStage/
+PortableStage/
+SetupFiles/
+app.zip
 *.zip
 *.7z
 
-# Gemini / Temp
+# Local / historical / temp
 .gemini/
 convert.py
 IMPLEMENTATION_PLAN.md
-x64/ 
-packages/ 
-Generated Files/ 
-winui_samples/ 
+winui_samples/
+debug.log
+debug2.log

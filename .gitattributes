@@ -1,0 +1,30 @@
+# Normalize line endings: let Git decide text vs binary, check out CRLF on Windows.
+* text=auto
+
+# Source is a Windows/Visual Studio project — keep CRLF in the working tree.
+*.cpp   text eol=crlf
+*.h     text eol=crlf
+*.hpp   text eol=crlf
+*.idl   text eol=crlf
+*.xaml  text eol=crlf
+*.rc    text eol=crlf
+*.manifest text eol=crlf
+*.vcxproj  text eol=crlf
+*.config   text eol=crlf
+*.cs    text eol=crlf
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+
+# Shell scripts must stay LF.
+*.sh    text eol=lf
+*.yml   text eol=lf
+
+# Binary assets — never touch line endings, never diff.
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.mp4   binary
+*.zip   binary
+*.7z    binary
+*.exe   binary
+*.hlsl  binary

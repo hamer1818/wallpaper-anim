@@ -1,3 +1,0 @@
-#include "src/resource.h"
-
-IDI_APP_ICON ICON "assets/icon.ico"
