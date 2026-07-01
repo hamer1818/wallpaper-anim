@@ -230,14 +230,20 @@ namespace Utils {
             std::string h = std::to_string(maxHeight);
             std::string fmt;
             if (hasFfmpeg) {
+                // Prefer 60fps H.264 (fps>=50) at the highest resolution that offers it,
+                // since YouTube often only has 30fps H.264 at 1080p while 60fps lives at
+                // 720p (or higher for some videos). Fall back to 30fps H.264, then mp4.
                 fmt =
+                    "bestvideo[vcodec^=avc1][height<=" + h + "][fps>=50]+bestaudio[ext=m4a]/"
                     "bestvideo[vcodec^=avc1][height<=" + h + "]+bestaudio[ext=m4a]/"
                     "best[vcodec^=avc1][height<=" + h + "]/"
+                    "bestvideo[ext=mp4][height<=" + h + "][fps>=50]+bestaudio/"
                     "bestvideo[ext=mp4][height<=" + h + "]+bestaudio/"
                     "best[ext=mp4][height<=" + h + "]/"
                     "22/18";
             } else {
-                // Single-file H.264 only (format 22 ~720p, 18 ~360p are always progressive).
+                // Single-file H.264 only (formats 22 ~720p, 18 ~360p are always 30fps
+                // progressive). 60fps needs merging, which requires ffmpeg.
                 fmt =
                     "best[vcodec^=avc1][acodec!=none][height<=" + h + "]/"
                     "22/18";
