@@ -192,7 +192,6 @@ namespace winrt::WallpaperAnimWinUI::implementation
         QueryPerformanceCounter(&lastCheckTime);
 
         bool isAutoPaused = false;
-        bool isOccluded = false;
 
         // Cache the frame-time budget; refreshed on each 1-second system check.
         int maxFPS = Config::ConfigManager::GetInstance().GetConfig().maxFPS;
@@ -225,15 +224,14 @@ namespace winrt::WallpaperAnimWinUI::implementation
                 targetFrameSec = 1.0 / maxFPS;
             }
 
-            bool active = !m_isPaused && !isAutoPaused && !isOccluded;
-
-            if (active) {
+            // NOTE: We intentionally do NOT pause on DXGI_STATUS_OCCLUDED here. For a
+            // WorkerW-parented wallpaper window some systems (seen on Windows 10) report
+            // the window as permanently occluded, which would stop the wallpaper from ever
+            // rendering. Resource saving is handled by the FPS cap and the fullscreen /
+            // battery auto-pause above.
+            if (!m_isPaused && !isAutoPaused) {
                 m_renderer.RenderFrame();
-                HRESULT hr = m_renderer.Present();
-                if (hr == DXGI_STATUS_OCCLUDED) {
-                    // The wallpaper is fully covered (e.g. a maximized window): stop drawing.
-                    isOccluded = true;
-                }
+                m_renderer.Present();
 
                 // Frame limiter: sleep off whatever time is left in the frame budget so we
                 // don't render faster than maxFPS (VSync alone would run at monitor refresh).
@@ -244,12 +242,6 @@ namespace winrt::WallpaperAnimWinUI::implementation
                 if (remaining > 0.0) {
                     Sleep((DWORD)(remaining * 1000.0));
                 }
-            } else if (isOccluded && !m_isPaused && !isAutoPaused) {
-                // Poll (without rendering) until the window is visible again.
-                if (m_renderer.TestOcclusion() != DXGI_STATUS_OCCLUDED) {
-                    isOccluded = false;
-                }
-                Sleep(200);
             } else {
                 Sleep(100); // manual/auto pause: idle cheaply
             }
