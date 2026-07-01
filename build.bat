@@ -26,6 +26,11 @@ if not exist %VCVARS% (
 call %VCVARS% amd64
 
 echo.
+echo Calisan uygulama ornekleri kapatiliyor (varsa)...
+REM Linker cikti .exe'yi kilitlemesin diye onceki calisan surecleri sonlandir.
+taskkill /IM WallpaperAnimWinUI.exe /F >nul 2>&1
+
+echo.
 echo Proje derleniyor (Release - x64)...
 msbuild WallpaperAnimWinUI.vcxproj /p:Configuration=Release /p:Platform=x64
 

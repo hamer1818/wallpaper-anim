@@ -1,0 +1,75 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Download yt-dlp.exe
+        shell: pwsh
+        run: |
+          # yt-dlp.exe is gitignored (large binary); fetch the official build so the
+          # project's copy-to-output step and the setup/portable packaging can include it.
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "yt-dlp.exe"
+
+      - name: Restore NuGet packages
+        run: nuget restore packages.config -PackagesDirectory packages
+
+      - name: Build (Release x64)
+        run: msbuild WallpaperAnimWinUI.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Read version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = & ./scripts/get-version.ps1
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "App version: $v"
+
+      - name: Build setup executable
+        shell: pwsh
+        run: ./build_setup.ps1
+
+      - name: Create portable zip
+        shell: pwsh
+        run: ./scripts/package-portable.ps1
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: WallpaperAnim-v${{ steps.ver.outputs.version }}
+          path: |
+            WallpaperAnimSetup.exe
+            WallpaperAnim-Portable.zip
+          if-no-files-found: error
+
+      - name: Create GitHub Release (on version tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ${{ github.ref_name }} `
+            -t "Release ${{ github.ref_name }}" `
+            -n "Automated release built by CI. Includes the Setup executable and a Portable zip." `
+            WallpaperAnimSetup.exe WallpaperAnim-Portable.zip

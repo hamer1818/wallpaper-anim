@@ -3,10 +3,14 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 #include <memory>
+#include <mutex>
+#include <vector>
 
 using Microsoft::WRL::ComPtr;
 
 namespace Render {
+    class IMediaPlayer;
+
     class DX11Renderer {
     public:
         DX11Renderer();
@@ -16,13 +20,21 @@ namespace Render {
         void Cleanup();
 
         void RenderFrame();
-        void Present();
+        // Presents the current frame. Returns the HRESULT from IDXGISwapChain::Present
+        // so callers can react to DXGI_STATUS_OCCLUDED and stop rendering while hidden.
+        HRESULT Present();
+        // Non-rendering present used to poll whether the window is still occluded.
+        HRESULT TestOcclusion();
+        // Resizes the swap chain buffers (e.g. after a resolution / display change).
+        bool Resize(UINT width, UINT height);
 
         ID3D11Device* GetDevice() const { return m_device.Get(); }
         ID3D11DeviceContext* GetContext() const { return m_context.Get(); }
-        
-        void SetMediaPlayer(class IMediaPlayer* player) { m_mediaPlayer = player; }
-        class IMediaPlayer* GetMediaPlayer() const { return m_mediaPlayer; }
+
+        // Swaps in a new media player. The previous player is stopped, cleaned up and
+        // destroyed under the render lock so the render thread never touches a freed player.
+        void SetMediaPlayer(std::unique_ptr<IMediaPlayer> player);
+        IMediaPlayer* GetMediaPlayer() const { return m_mediaPlayer.get(); }
 
     private:
         HWND m_hwnd;
@@ -33,7 +45,15 @@ namespace Render {
 
         bool CreateDeviceAndSwapChain();
         bool CreateRenderTarget();
+        // Recomputes one D3D viewport per monitor (relative to the virtual-desktop origin)
+        // so the same wallpaper is drawn full-size on every screen instead of stretched.
+        void UpdateMonitorLayout();
 
-        class IMediaPlayer* m_mediaPlayer;
+        std::unique_ptr<IMediaPlayer> m_mediaPlayer;
+        std::mutex m_mediaMutex; // guards m_mediaPlayer against concurrent swap/render
+
+        std::vector<D3D11_VIEWPORT> m_viewports; // one per monitor
+        int m_virtualLeft = 0;
+        int m_virtualTop = 0;
     };
 }

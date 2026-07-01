@@ -5,6 +5,7 @@
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <string>
+#include <atomic>
 
 namespace winrt::WallpaperAnimWinUI::implementation
 {
@@ -21,6 +22,7 @@ namespace winrt::WallpaperAnimWinUI::implementation
         void TglFullscreen_Toggled(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         void TglStartup_Toggled(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         void CmbLanguage_SelectionChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const& e);
+        void CmbFps_SelectionChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const& e);
         void BtnUpdate_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         void OnAppWindowClosing(winrt::Microsoft::UI::Windowing::AppWindow const& sender, winrt::Microsoft::UI::Windowing::AppWindowClosingEventArgs const& args);
         winrt::fire_and_forget ShowMinimizeWarningDialog();
@@ -30,8 +32,8 @@ namespace winrt::WallpaperAnimWinUI::implementation
         void LoadLocalization();
         HWND GetWindowHandle();
         
-        bool m_isUpdating{ false };
-        bool m_isDownloading{ false };
+        std::atomic<bool> m_isUpdating{ false };
+        std::atomic<bool> m_isDownloading{ false };
     };
 }
 namespace winrt::WallpaperAnimWinUI::factory_implementation

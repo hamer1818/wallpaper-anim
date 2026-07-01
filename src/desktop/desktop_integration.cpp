@@ -51,9 +51,10 @@ namespace DesktopIntegration {
             style |= WS_CHILD;
             SetWindowLongPtr(hwnd, GWL_STYLE, style);
 
-            int screenWidth = GetSystemMetrics(SM_CXSCREEN);
-            int screenHeight = GetSystemMetrics(SM_CYSCREEN);
-            
+            // Cover the whole virtual desktop (all monitors), not just the primary screen.
+            int screenWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+            int screenHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+
             // Attempt to put it behind the icons
             HWND defView = FindWindowEx(progman, nullptr, L"SHELLDLL_DefView", nullptr);
             if (defView) {

@@ -192,8 +192,17 @@ namespace Utils {
         }).detach();
     }
 
-    void YouTubeDownloader::DownloadAsync(const std::string& url, const std::string& format_id, std::atomic<float>* progress, std::function<void(bool, const std::wstring&, const std::string&)> callback) {
-        std::thread([url, format_id, progress, callback]() {
+    void YouTubeDownloader::DownloadAsync(const std::string& url, int maxHeight, std::atomic<float>* progress, std::function<void(bool, const std::wstring&, const std::string&)> callback) {
+        // Auto-detect the screen height if not supplied.
+        if (maxHeight <= 0) {
+            maxHeight = GetSystemMetrics(SM_CYSCREEN);
+            if (maxHeight <= 0) maxHeight = 1080;
+        }
+        // YouTube only offers H.264 (avc1) up to 1080p; going higher forces VP9/AV1,
+        // which Media Foundation can't decode on stock Windows 10. Cap accordingly.
+        if (maxHeight > 1080) maxHeight = 1080;
+
+        std::thread([url, maxHeight, progress, callback]() {
             std::wstring cacheDir = GetCacheDirectory();
             // Use CP_ACP (not CP_UTF8): the command line is passed to CreateProcessA,
             // so the path must be in the system ANSI codepage. The cache dir lives
@@ -207,9 +216,19 @@ namespace Utils {
 
             std::string ytDlp = GetYtDlpPathA();
 
-            // yt-dlp will merge bestaudio automatically if we ask for it.
-            // But since we want to output mp4, we use --merge-output-format mp4
-            std::string cmd = "\"" + ytDlp + "\" -f \"" + format_id + "+bestaudio/best\" --merge-output-format mp4 -o \"" + cacheDirMbs + "\\%(id)s.%(ext)s\" --newline \"" + url + "\"";
+            // Prefer H.264 video + m4a audio within the height cap so the merged MP4 is
+            // universally playable. Fall back progressively, ending at plain "best".
+            std::string h = std::to_string(maxHeight);
+            std::string fmt =
+                "bestvideo[vcodec^=avc1][height<=" + h + "]+bestaudio[ext=m4a]/"
+                "best[vcodec^=avc1][height<=" + h + "]/"
+                "bestvideo[ext=mp4][height<=" + h + "]+bestaudio/"
+                "best[ext=mp4][height<=" + h + "]/"
+                "best[height<=" + h + "]/best";
+
+            // --merge-output-format mp4 ensures a single .mp4 output; --recode isn't used
+            // to avoid requiring ffmpeg re-encode when streams are already mp4-compatible.
+            std::string cmd = "\"" + ytDlp + "\" -f \"" + fmt + "\" --merge-output-format mp4 -o \"" + cacheDirMbs + "\\%(id)s.%(ext)s\" --newline \"" + url + "\"";
             
             std::regex progRegex(R"(\[download\]\s+([0-9.]+)%)");
             CmdResult execRes = RunCommandHidden(cmd, [&](const std::string& line) {

@@ -49,6 +49,9 @@ namespace Config {
             json j;
             try {
                 file >> j;
+                // Schema version: absent means a pre-versioning (v0) config. Future breaking
+                // layout changes should branch on this value before reading fields.
+                m_config.configVersion = j.value("configVersion", 0);
                 if (j.contains("lastVideoPath")) m_config.lastVideoPath = s2ws(j["lastVideoPath"].get<std::string>());
                 if (j.contains("maxFPS")) m_config.maxFPS = j["maxFPS"].get<int>();
                 m_config.pauseOnFullscreen = j.value("pauseOnFullscreen", true);
@@ -57,7 +60,7 @@ namespace Config {
                 m_config.hideMinimizeWarning = j.value("hideMinimizeWarning", false);
                 m_config.lastUpdateCheck = j.value("lastUpdateCheck", (int64_t)0);
                 if (j.contains("language")) m_config.language = s2ws(j["language"].get<std::string>());
-                
+
                 if (j.contains("history") && j["history"].is_array()) {
                     for (auto& item : j["history"]) {
                         WallpaperHistoryItem h;
@@ -68,6 +71,13 @@ namespace Config {
                         m_config.history.push_back(h);
                     }
                 }
+
+                // Clamp anything an older/edited config may have overgrown.
+                if (m_config.history.size() > kMaxHistoryItems) {
+                    m_config.history.resize(kMaxHistoryItems);
+                }
+                // Migrate to the current schema version for next save.
+                m_config.configVersion = kCurrentConfigVersion;
             } catch (...) {
                 // Keep default values on parse error
             }
@@ -75,7 +85,13 @@ namespace Config {
     }
  
     void ConfigManager::Save() {
+        // Enforce the history cap centrally so every code path that adds items is covered.
+        if (m_config.history.size() > kMaxHistoryItems) {
+            m_config.history.resize(kMaxHistoryItems);
+        }
+
         json j;
+        j["configVersion"] = kCurrentConfigVersion;
         j["lastVideoPath"] = ws2s(m_config.lastVideoPath);
         j["maxFPS"] = m_config.maxFPS;
         j["pauseOnFullscreen"] = m_config.pauseOnFullscreen;

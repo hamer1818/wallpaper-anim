@@ -15,8 +15,12 @@ using namespace winrt::Microsoft::UI::Dispatching;
 #include <WindowsAppSDK-VersionInfo.h>
 
 void Log(const char* msg) {
+#ifdef _DEBUG
     std::ofstream ofs("debug.log", std::ios::app);
     ofs << msg << std::endl;
+#else
+    (void)msg;
+#endif
 }
 
 int __stdcall wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
@@ -35,7 +39,7 @@ int __stdcall wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                 Log("App created");
             });
         Log("Application::Start returned");
-    } catch (winrt::hresult_error const& ex) {
+    } catch (winrt::hresult_error const&) {
         Log("Exception caught");
     } catch (...) {
         Log("Unknown exception");

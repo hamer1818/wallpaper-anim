@@ -5,8 +5,12 @@
 #include <string>
 
 void LogApp(const std::string& msg) {
+#ifdef _DEBUG
     std::ofstream ofs("debug2.log", std::ios::app);
     if(ofs.is_open()) ofs << msg << std::endl;
+#else
+    (void)msg;
+#endif
 }
 #include "src/desktop/desktop_integration.h"
 #include "src/render/video_player.h"
@@ -14,6 +18,7 @@ void LogApp(const std::string& msg) {
 #include "src/render/shader_player.h"
 #include "src/system/system_monitor.h"
 #include "src/config.h"
+#include "src/localization.h"
 #include "src/resource.h"
 
 using namespace winrt;
@@ -73,12 +78,18 @@ namespace winrt::WallpaperAnimWinUI::implementation
 
         RegisterClass(&wc);
 
+        // Span the entire virtual desktop so the wallpaper can cover every monitor.
+        int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        int vcx = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        int vcy = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+
         m_wallpaperHwnd = CreateWindowEx(
             0,
             CLASS_NAME,
             L"WallpaperAnimBackground",
             WS_POPUP | WS_VISIBLE,
-            0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN),
+            vx, vy, vcx, vcy,
             nullptr, nullptr, hInstance, this
         );
 
@@ -140,34 +151,38 @@ namespace winrt::WallpaperAnimWinUI::implementation
         }
     }
 
-    void App::LoadMedia(const std::wstring& path)
+    bool App::LoadMedia(const std::wstring& path)
     {
-        auto currentMediaPlayer = m_renderer.GetMediaPlayer();
-        if (currentMediaPlayer) {
-            currentMediaPlayer->Stop();
-            currentMediaPlayer->Cleanup();
-            delete currentMediaPlayer;
-            m_renderer.SetMediaPlayer(nullptr);
-        }
-
-        Render::IMediaPlayer* newPlayer = nullptr;
-
         std::wstring ext = path.substr(path.find_last_of(L".") + 1);
         for (auto& c : ext) c = towlower(c);
 
+        std::unique_ptr<Render::IMediaPlayer> newPlayer;
         if (ext == L"gif") {
-            newPlayer = new Render::GifPlayer();
+            newPlayer = std::make_unique<Render::GifPlayer>();
         } else if (ext == L"hlsl") {
-            newPlayer = new Render::ShaderPlayer();
+            newPlayer = std::make_unique<Render::ShaderPlayer>();
         } else {
-            newPlayer = new Render::VideoPlayer();
+            newPlayer = std::make_unique<Render::VideoPlayer>();
         }
 
-        m_renderer.SetMediaPlayer(newPlayer);
+        // Prepare the new player before handing it to the renderer so the swap (which
+        // stops/cleans the old player under the render lock) is as quick as possible.
+        bool ok = false;
         if (newPlayer->Initialize(m_renderer.GetDevice(), m_renderer.GetContext())) {
-            newPlayer->LoadMedia(path);
-            newPlayer->Play();
+            if (newPlayer->LoadMedia(path)) {
+                newPlayer->Play();
+                ok = true;
+            }
         }
+
+        if (ok) {
+            m_renderer.SetMediaPlayer(std::move(newPlayer));
+        } else {
+            // Loading failed (e.g. a codec Media Foundation can't decode on this OS).
+            // Discard the new player and keep whatever was already playing.
+            newPlayer->Cleanup();
+        }
+        return ok;
     }
 
     void App::RenderLoop()
@@ -175,36 +190,68 @@ namespace winrt::WallpaperAnimWinUI::implementation
         LARGE_INTEGER freq, lastCheckTime;
         QueryPerformanceFrequency(&freq);
         QueryPerformanceCounter(&lastCheckTime);
-        
+
         bool isAutoPaused = false;
+        bool isOccluded = false;
+
+        // Cache the frame-time budget; refreshed on each 1-second system check.
+        int maxFPS = Config::ConfigManager::GetInstance().GetConfig().maxFPS;
+        if (maxFPS < 1) maxFPS = 30;
+        double targetFrameSec = 1.0 / maxFPS;
 
         while (m_running) {
-            LARGE_INTEGER currentTime;
-            QueryPerformanceCounter(&currentTime);
-            double elapsedCheck = (double)(currentTime.QuadPart - lastCheckTime.QuadPart) / freq.QuadPart;
-            
-            // Check system state every 1 second
+            LARGE_INTEGER frameStart;
+            QueryPerformanceCounter(&frameStart);
+            double elapsedCheck = (double)(frameStart.QuadPart - lastCheckTime.QuadPart) / freq.QuadPart;
+
+            // Check system state (battery / fullscreen) roughly once per second.
             if (elapsedCheck >= 1.0) {
-                lastCheckTime = currentTime;
-                
+                lastCheckTime = frameStart;
+
                 auto& config = Config::ConfigManager::GetInstance().GetConfig();
                 bool shouldAutoPause = false;
-                
+
                 if (config.pauseOnBattery && SystemMonitor::IsOnBattery()) {
                     shouldAutoPause = true;
                 }
                 if (config.pauseOnFullscreen && SystemMonitor::IsFullscreenAppActive()) {
                     shouldAutoPause = true;
                 }
-                
+
                 isAutoPaused = shouldAutoPause;
+
+                maxFPS = config.maxFPS;
+                if (maxFPS < 1) maxFPS = 30;
+                targetFrameSec = 1.0 / maxFPS;
             }
 
-            if (!m_isPaused && !isAutoPaused) {
+            bool active = !m_isPaused && !isAutoPaused && !isOccluded;
+
+            if (active) {
                 m_renderer.RenderFrame();
-                m_renderer.Present();
+                HRESULT hr = m_renderer.Present();
+                if (hr == DXGI_STATUS_OCCLUDED) {
+                    // The wallpaper is fully covered (e.g. a maximized window): stop drawing.
+                    isOccluded = true;
+                }
+
+                // Frame limiter: sleep off whatever time is left in the frame budget so we
+                // don't render faster than maxFPS (VSync alone would run at monitor refresh).
+                LARGE_INTEGER now;
+                QueryPerformanceCounter(&now);
+                double frameElapsed = (double)(now.QuadPart - frameStart.QuadPart) / freq.QuadPart;
+                double remaining = targetFrameSec - frameElapsed;
+                if (remaining > 0.0) {
+                    Sleep((DWORD)(remaining * 1000.0));
+                }
+            } else if (isOccluded && !m_isPaused && !isAutoPaused) {
+                // Poll (without rendering) until the window is visible again.
+                if (m_renderer.TestOcclusion() != DXGI_STATUS_OCCLUDED) {
+                    isOccluded = false;
+                }
+                Sleep(200);
             } else {
-                Sleep(16); // sleep slightly when paused to conserve CPU
+                Sleep(100); // manual/auto pause: idle cheaply
             }
         }
     }
@@ -237,7 +284,28 @@ namespace winrt::WallpaperAnimWinUI::implementation
 
         case WM_APP_CONFIG_CHANGED: {
             auto& config = Config::ConfigManager::GetInstance().GetConfig();
-            LoadMedia(config.lastVideoPath);
+            if (!LoadMedia(config.lastVideoPath)) {
+                // Tell the user why nothing changed instead of failing silently.
+                auto& strings = Localization::Get();
+                auto toWide = [](const char* utf8) {
+                    int len = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
+                    std::wstring w(len > 0 ? len - 1 : 0, L'\0');
+                    if (len > 0) MultiByteToWideChar(CP_UTF8, 0, utf8, -1, &w[0], len);
+                    return w;
+                };
+                MessageBoxW(nullptr, toWide(strings.mediaLoadFailed).c_str(),
+                            toWide(strings.mediaLoadFailedTitle).c_str(), MB_OK | MB_ICONWARNING);
+            }
+            return 0;
+        }
+
+        case WM_DISPLAYCHANGE: {
+            // Resolution / monitor layout changed: resize the window and swap chain to
+            // the new virtual-desktop size so the wallpaper keeps filling every monitor.
+            int vcx = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+            int vcy = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+            SetWindowPos(hwnd, nullptr, 0, 0, vcx, vcy, SWP_NOZORDER | SWP_NOACTIVATE);
+            m_renderer.Resize((UINT)vcx, (UINT)vcy);
             return 0;
         }
 

@@ -3,6 +3,12 @@
 #include <vector>
 
 namespace Config {
+    // Current on-disk config schema version. Bump when the JSON layout changes and
+    // add migration handling in ConfigManager::Load.
+    constexpr int kCurrentConfigVersion = 1;
+    // Cap the wallpaper history so the config file and thumbnail cache cannot grow forever.
+    constexpr size_t kMaxHistoryItems = 50;
+
     struct WallpaperHistoryItem {
         std::wstring path;
         std::wstring name;
@@ -11,6 +17,7 @@ namespace Config {
     };
 
     struct AppConfig {
+        int configVersion = kCurrentConfigVersion;
         std::wstring lastVideoPath;
         int maxFPS = 30;
         bool pauseOnFullscreen = true;

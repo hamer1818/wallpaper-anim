@@ -2,6 +2,7 @@
 #include "../version.h"
 #include <windows.h>
 #include <winhttp.h>
+#include <bcrypt.h>
 #include <thread>
 #include <nlohmann/json.hpp>
 #include <shlobj.h>
@@ -9,15 +10,75 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <cctype>
 
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "bcrypt.lib")
 
 using json = nlohmann::json;
 
 namespace Utils {
+
+    // --------------------------------------------------------------------------
+    // SHA-256 verification (CNG / BCrypt)
+    // --------------------------------------------------------------------------
+
+    static bool ComputeFileSha256(const std::wstring& path, std::string& outHex) {
+        outHex.clear();
+
+        std::ifstream file(path, std::ios::binary);
+        if (!file.is_open()) return false;
+
+        BCRYPT_ALG_HANDLE hAlg = nullptr;
+        if (BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != 0)
+            return false;
+
+        DWORD hashLen = 0, cbData = 0;
+        BCryptGetProperty(hAlg, BCRYPT_HASH_LENGTH, (PUCHAR)&hashLen, sizeof(hashLen), &cbData, 0);
+
+        BCRYPT_HASH_HANDLE hHash = nullptr;
+        bool ok = (BCryptCreateHash(hAlg, &hHash, nullptr, 0, nullptr, 0, 0) == 0);
+
+        if (ok) {
+            char buffer[65536];
+            while (file) {
+                file.read(buffer, sizeof(buffer));
+                std::streamsize read = file.gcount();
+                if (read > 0) {
+                    if (BCryptHashData(hHash, (PUCHAR)buffer, (ULONG)read, 0) != 0) { ok = false; break; }
+                }
+            }
+        }
+
+        if (ok) {
+            std::vector<UCHAR> hash(hashLen);
+            ok = (BCryptFinishHash(hHash, hash.data(), hashLen, 0) == 0);
+            if (ok) {
+                static const char* hex = "0123456789abcdef";
+                outHex.reserve(hashLen * 2);
+                for (UCHAR b : hash) {
+                    outHex.push_back(hex[b >> 4]);
+                    outHex.push_back(hex[b & 0xF]);
+                }
+            }
+        }
+
+        if (hHash) BCryptDestroyHash(hHash);
+        BCryptCloseAlgorithmProvider(hAlg, 0);
+        return ok;
+    }
+
+    // Normalizes a digest string ("sha256:ABCD..." or "ABCD...") to lowercase hex.
+    static std::string NormalizeDigest(const std::string& digest) {
+        std::string d = digest;
+        auto colon = d.find(':');
+        if (colon != std::string::npos) d = d.substr(colon + 1);
+        for (auto& c : d) c = (char)std::tolower((unsigned char)c);
+        return d;
+    }
 
     // --------------------------------------------------------------------------
     // HTTP helpers
@@ -120,6 +181,12 @@ namespace Utils {
         ParsedUrl parsed;
         if (!ParseUrl(url, parsed)) {
             outError = "URL ayriştirilamadi.";
+            return false;
+        }
+
+        // Only download updates over HTTPS so the payload cannot be tampered with in transit.
+        if (!parsed.isHttps) {
+            outError = "Guvenli olmayan (HTTPS disi) guncelleme adresi reddedildi.";
             return false;
         }
 
@@ -320,8 +387,11 @@ namespace Utils {
         std::wstring sourceDir = extractedFolder;
 
         // Check if exe is directly in extractedFolder
+        bool foundExe = false;
         std::wstring testExe = extractedFolder + L"\\WallpaperAnimWinUI.exe";
-        if (GetFileAttributesW(testExe.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        if (GetFileAttributesW(testExe.c_str()) != INVALID_FILE_ATTRIBUTES) {
+            foundExe = true;
+        } else {
             // Search one level of subdirectories
             WIN32_FIND_DATAW fd;
             std::wstring searchPattern = extractedFolder + L"\\*";
@@ -334,12 +404,19 @@ namespace Utils {
                         std::wstring subTest = extractedFolder + L"\\" + fd.cFileName + L"\\WallpaperAnimWinUI.exe";
                         if (GetFileAttributesW(subTest.c_str()) != INVALID_FILE_ATTRIBUTES) {
                             sourceDir = extractedFolder + L"\\" + fd.cFileName;
+                            foundExe = true;
                             break;
                         }
                     }
                 } while (FindNextFileW(hFind, &fd));
                 FindClose(hFind);
             }
+        }
+
+        // Never kill/overwrite the running install with an update that has no executable.
+        if (!foundExe) {
+            outError = "Guncelleme paketi gecersiz: WallpaperAnimWinUI.exe bulunamadi.";
+            return false;
         }
 
         // Build batch script path
@@ -453,14 +530,16 @@ namespace Utils {
                     return;
                 }
 
-                // Find the ZIP asset download URL
+                // Find the ZIP asset download URL (and its digest, if GitHub provides one)
                 std::string zipDownloadUrl;
+                std::string zipDigest;
                 if (j.contains("assets") && j["assets"].is_array()) {
                     for (auto& asset : j["assets"]) {
                         std::string name = asset.value("name", "");
                         // Look for .zip files
                         if (name.size() > 4 && name.substr(name.size() - 4) == ".zip") {
                             zipDownloadUrl = asset.value("browser_download_url", "");
+                            zipDigest = asset.value("digest", ""); // e.g. "sha256:abc..."
                             break;
                         }
                     }
@@ -476,6 +555,7 @@ namespace Utils {
                         info.version = tag_name;
                         info.releaseUrl = html_url;
                         info.downloadUrl = zipDownloadUrl;
+                        info.sha256 = zipDigest;
                     } else {
                         info.hasUpdate = false;
                     }
@@ -494,9 +574,10 @@ namespace Utils {
     void UpdateChecker::DownloadAndApplyUpdateAsync(
         const std::string& downloadUrl,
         std::atomic<float>* progress,
-        std::function<void(bool success, const std::string& errorMessage)> completionCallback) {
+        std::function<void(bool success, const std::string& errorMessage)> completionCallback,
+        const std::string& expectedSha256) {
 
-        std::thread([downloadUrl, progress, completionCallback]() {
+        std::thread([downloadUrl, progress, completionCallback, expectedSha256]() {
             std::string error;
 
             // 1. Build temp paths
@@ -521,6 +602,17 @@ namespace Utils {
             if (!DownloadFileToPath(downloadUrl, zipPath, progress, error)) {
                 completionCallback(false, error.empty() ? "Dosya indirilemedi." : error);
                 return;
+            }
+
+            // 2b. Verify integrity against the expected SHA-256, when the release provides one.
+            if (!expectedSha256.empty()) {
+                std::string expected = NormalizeDigest(expectedSha256);
+                std::string actual;
+                if (!ComputeFileSha256(zipPath, actual) || actual != expected) {
+                    DeleteFileW(zipPath.c_str());
+                    completionCallback(false, "Guncelleme dogrulanamadi (SHA-256 uyusmadi). Islem iptal edildi.");
+                    return;
+                }
             }
 
             // 3. Extract the ZIP

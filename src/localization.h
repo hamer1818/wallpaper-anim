@@ -83,6 +83,17 @@ namespace Localization {
         const char* errorTitle;
         const char* okBtn;
         const char* close;
+
+        // Download / progress status
+        const char* downloadStarting;
+        const char* fetchInfoFailed;
+        const char* downloading;        // prefix; a "<pct>%" is appended
+        const char* downloadComplete;
+        const char* videoDownloadFailed;
+
+        // Media playback errors
+        const char* mediaLoadFailedTitle;
+        const char* mediaLoadFailed;
     };
 
     inline const Strings& Get() {
@@ -150,6 +161,15 @@ namespace Localization {
             "Hata Oluştu",
             "Tamam",
             "Kapat",
+
+            "İndirme başlatılıyor...",
+            "Hata: Video bilgileri alınamadı.",
+            "İndiriliyor: ",
+            "İndirme tamamlandı!",
+            "Hata: Video indirilemedi.",
+
+            "Oynatılamadı",
+            "Bu video oynatılamadı. Codec'i (ör. VP9/AV1) bu Windows sürümünde desteklenmiyor olabilir. Lütfen farklı bir video deneyin.",
         };
 
         static const Strings en = {
@@ -216,6 +236,15 @@ namespace Localization {
             "Error",
             "OK",
             "Close",
+
+            "Starting download...",
+            "Error: Could not get video info.",
+            "Downloading: ",
+            "Download complete!",
+            "Error: Could not download video.",
+
+            "Playback failed",
+            "This video could not be played. Its codec (e.g. VP9/AV1) may be unsupported on this Windows version. Please try a different video.",
         };
 
         std::wstring lang = Config::ConfigManager::GetInstance().GetConfig().language;

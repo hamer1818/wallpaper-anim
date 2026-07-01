@@ -1,16 +1,15 @@
 #include "dx11_renderer.h"
-#include "video_player.h"
+#include "media_player.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 
 namespace Render {
 
-    DX11Renderer::DX11Renderer() : m_hwnd(nullptr), m_mediaPlayer(new VideoPlayer()) {}
+    DX11Renderer::DX11Renderer() : m_hwnd(nullptr) {}
 
     DX11Renderer::~DX11Renderer() {
         Cleanup();
-        delete m_mediaPlayer;
     }
 
     bool DX11Renderer::Initialize(HWND hwnd) {
@@ -30,9 +29,43 @@ namespace Render {
         vp.TopLeftY = 0;
         m_context->RSSetViewports(1, &vp);
 
-        if (!m_mediaPlayer->Initialize(m_device.Get(), m_context.Get())) return false;
+        UpdateMonitorLayout();
 
+        // The active media player is supplied later via SetMediaPlayer (App::LoadMedia),
+        // which initializes it against this device/context.
         return true;
+    }
+
+    static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC, LPRECT, LPARAM lParam) {
+        auto* rects = reinterpret_cast<std::vector<RECT>*>(lParam);
+        MONITORINFO mi = { sizeof(mi) };
+        if (GetMonitorInfo(hMonitor, &mi)) {
+            rects->push_back(mi.rcMonitor);
+        }
+        return TRUE;
+    }
+
+    void DX11Renderer::UpdateMonitorLayout() {
+        // The wallpaper window/swap chain spans the whole virtual desktop. Each monitor
+        // gets a viewport placed at its offset from the virtual-desktop origin so the
+        // media renders at native size per monitor (not stretched across all of them).
+        m_virtualLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        m_virtualTop  = GetSystemMetrics(SM_YVIRTUALSCREEN);
+
+        std::vector<RECT> rects;
+        EnumDisplayMonitors(nullptr, nullptr, MonitorEnumProc, (LPARAM)&rects);
+
+        m_viewports.clear();
+        for (const auto& r : rects) {
+            D3D11_VIEWPORT vp = {};
+            vp.TopLeftX = (FLOAT)(r.left - m_virtualLeft);
+            vp.TopLeftY = (FLOAT)(r.top - m_virtualTop);
+            vp.Width = (FLOAT)(r.right - r.left);
+            vp.Height = (FLOAT)(r.bottom - r.top);
+            vp.MinDepth = 0.0f;
+            vp.MaxDepth = 1.0f;
+            m_viewports.push_back(vp);
+        }
     }
 
     void DX11Renderer::Cleanup() {
@@ -101,19 +134,68 @@ namespace Render {
         // Ensure the render target is bound. In FLIP_DISCARD swap chains, it can become unbound after Present.
         m_context->OMSetRenderTargets(1, m_renderTargetView.GetAddressOf(), nullptr);
 
-        // Clear to dark red to help debug if rendering fails
-        float clearColor[4] = { 0.2f, 0.0f, 0.0f, 1.0f };
+        // Clear to black so any uncovered area blends with the desktop instead of flashing a color.
+        float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
         m_context->ClearRenderTargetView(m_renderTargetView.Get(), clearColor);
 
+        std::lock_guard<std::mutex> lock(m_mediaMutex);
         if (m_mediaPlayer) {
+            // Advance the frame once, then draw it into each monitor's viewport.
             m_mediaPlayer->UpdateFrame();
-            m_mediaPlayer->Render();
+            if (m_viewports.empty()) {
+                m_mediaPlayer->Render();
+            } else {
+                for (const auto& vp : m_viewports) {
+                    m_context->RSSetViewports(1, &vp);
+                    m_mediaPlayer->Render();
+                }
+            }
         }
     }
 
-    void DX11Renderer::Present() {
+    HRESULT DX11Renderer::Present() {
         if (m_swapChain) {
-            m_swapChain->Present(1, 0); // VSync enabled
+            return m_swapChain->Present(1, 0); // VSync enabled
         }
+        return S_OK;
+    }
+
+    HRESULT DX11Renderer::TestOcclusion() {
+        if (m_swapChain) {
+            // DXGI_PRESENT_TEST does not render; it only reports S_OK or DXGI_STATUS_OCCLUDED.
+            return m_swapChain->Present(0, DXGI_PRESENT_TEST);
+        }
+        return S_OK;
+    }
+
+    bool DX11Renderer::Resize(UINT width, UINT height) {
+        if (!m_swapChain || width == 0 || height == 0) return false;
+
+        m_context->OMSetRenderTargets(0, nullptr, nullptr);
+        m_renderTargetView.Reset();
+
+        HRESULT hr = m_swapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
+        if (FAILED(hr)) return false;
+
+        if (!CreateRenderTarget()) return false;
+
+        D3D11_VIEWPORT vp = {};
+        vp.Width = (FLOAT)width;
+        vp.Height = (FLOAT)height;
+        vp.MinDepth = 0.0f;
+        vp.MaxDepth = 1.0f;
+        m_context->RSSetViewports(1, &vp);
+
+        UpdateMonitorLayout();
+        return true;
+    }
+
+    void DX11Renderer::SetMediaPlayer(std::unique_ptr<IMediaPlayer> player) {
+        std::lock_guard<std::mutex> lock(m_mediaMutex);
+        if (m_mediaPlayer) {
+            m_mediaPlayer->Stop();
+            m_mediaPlayer->Cleanup();
+        }
+        m_mediaPlayer = std::move(player);
     }
 }

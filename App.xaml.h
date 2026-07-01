@@ -31,7 +31,7 @@ namespace winrt::WallpaperAnimWinUI::implementation
         std::atomic<bool> m_running{ false };
         std::atomic<bool> m_isPaused{ false };
 
-        void LoadMedia(const std::wstring& path);
+        bool LoadMedia(const std::wstring& path);
         void RenderLoop();
         static LRESULT CALLBACK WallpaperWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
         LRESULT HandleWallpaperMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);

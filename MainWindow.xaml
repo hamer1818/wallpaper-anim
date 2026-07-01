@@ -24,7 +24,8 @@
 
                 <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,24">
                     <TextBlock Text="WallpaperAnim" FontSize="20" FontWeight="Bold" Foreground="White"/>
-                    <TextBlock x:Name="TxtAppVersion" Text="v1.3.2" FontSize="12" Foreground="#AAAAAA"/>
+                    <!-- Design-time placeholder only; set at runtime from version.h (APP_VERSION_STRING_W). -->
+                    <TextBlock x:Name="TxtAppVersion" Text="v1.4.0" FontSize="12" Foreground="#AAAAAA"/>
                 </StackPanel>
 
                 <StackPanel Grid.Row="1" Spacing="4">
@@ -127,6 +128,16 @@
                         <StackPanel Spacing="4">
                             <ToggleSwitch x:Name="TglStartup" Header="Windows Başlangıcında Çalıştır" Toggled="TglStartup_Toggled" Foreground="White"/>
                             <TextBlock x:Name="TxtTglStartupDesc" Text="Bilgisayar açıldığında uygulamayı otomatik başlatır." FontSize="12" Foreground="#AAAAAA"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock x:Name="TxtFpsLabel" Text="Maks. FPS" FontWeight="SemiBold" Foreground="White"/>
+                            <ComboBox x:Name="CmbFps" Width="200" SelectionChanged="CmbFps_SelectionChanged" Background="#1E1E1E" Foreground="White">
+                                <ComboBoxItem Content="15 FPS"/>
+                                <ComboBoxItem Content="24 FPS"/>
+                                <ComboBoxItem Content="30 FPS"/>
+                                <ComboBoxItem Content="60 FPS"/>
+                            </ComboBox>
                         </StackPanel>
 
                         <StackPanel Spacing="8">
