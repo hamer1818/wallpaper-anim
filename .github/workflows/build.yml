@@ -3,7 +3,6 @@ name: Build
 on:
   push:
     branches: [ master ]
-    tags: [ 'v*' ]
   pull_request:
     branches: [ master ]
   workflow_dispatch:
@@ -63,13 +62,23 @@ jobs:
             WallpaperAnim-Portable.zip
           if-no-files-found: error
 
-      - name: Create GitHub Release (on version tag)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish GitHub Release (auto, when version is new)
+        # On every master push: read the version from version.h and, if no release
+        # exists for it yet, create the tag + release with the Setup and Portable assets.
+        # Bumping src/version.h is therefore the only manual step needed to ship.
+        if: github.ref == 'refs/heads/master'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create ${{ github.ref_name }} `
-            -t "Release ${{ github.ref_name }}" `
-            -n "Automated release built by CI. Includes the Setup executable and a Portable zip." `
-            WallpaperAnimSetup.exe WallpaperAnim-Portable.zip
+          $tag = "v${{ steps.ver.outputs.version }}"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists - skipping."
+          } else {
+            Write-Host "Creating release $tag..."
+            gh release create $tag `
+              --title "Release $tag" `
+              --notes "Automated release built by CI. Includes the Setup executable and a Portable zip." `
+              WallpaperAnimSetup.exe WallpaperAnim-Portable.zip
+          }
