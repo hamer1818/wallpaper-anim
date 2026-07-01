@@ -193,6 +193,29 @@ namespace winrt::WallpaperAnimWinUI::implementation
         return ok;
     }
 
+    // Current primary-monitor refresh rate (Hz), falling back to 60 if unknown.
+    static int GetPrimaryRefreshRate()
+    {
+        DEVMODEW dm = {};
+        dm.dmSize = sizeof(dm);
+        if (EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &dm) && dm.dmDisplayFrequency > 1) {
+            return (int)dm.dmDisplayFrequency;
+        }
+        return 60;
+    }
+
+    // Maps the configured target FPS onto a DXGI present sync interval (1..4). The
+    // hardware then paces frames on the vblank, which is smooth/judder-free. maxFPS <= 0
+    // means "match the monitor" (sync interval 1 = full refresh rate).
+    static UINT ComputeSyncInterval(int maxFPS, int refreshRate)
+    {
+        if (maxFPS <= 0 || maxFPS >= refreshRate) return 1;
+        int iv = (int)((double)refreshRate / maxFPS + 0.5);
+        if (iv < 1) iv = 1;
+        if (iv > 4) iv = 4;
+        return (UINT)iv;
+    }
+
     void App::RenderLoop()
     {
         LARGE_INTEGER freq, lastCheckTime;
@@ -201,10 +224,8 @@ namespace winrt::WallpaperAnimWinUI::implementation
 
         bool isAutoPaused = false;
 
-        // Cache the frame-time budget; refreshed on each 1-second system check.
-        int maxFPS = Config::ConfigManager::GetInstance().GetConfig().maxFPS;
-        if (maxFPS < 1) maxFPS = 30;
-        double targetFrameSec = 1.0 / maxFPS;
+        int refreshRate = GetPrimaryRefreshRate();
+        UINT syncInterval = ComputeSyncInterval(Config::ConfigManager::GetInstance().GetConfig().maxFPS, refreshRate);
 
         while (m_running) {
             LARGE_INTEGER frameStart;
@@ -227,29 +248,20 @@ namespace winrt::WallpaperAnimWinUI::implementation
 
                 isAutoPaused = shouldAutoPause;
 
-                maxFPS = config.maxFPS;
-                if (maxFPS < 1) maxFPS = 30;
-                targetFrameSec = 1.0 / maxFPS;
+                // Refresh rate can change (e.g. monitor switch); recompute pacing.
+                refreshRate = GetPrimaryRefreshRate();
+                syncInterval = ComputeSyncInterval(config.maxFPS, refreshRate);
             }
 
-            // NOTE: We intentionally do NOT pause on DXGI_STATUS_OCCLUDED here. For a
-            // WorkerW-parented wallpaper window some systems (seen on Windows 10) report
-            // the window as permanently occluded, which would stop the wallpaper from ever
-            // rendering. Resource saving is handled by the FPS cap and the fullscreen /
-            // battery auto-pause above.
+            // NOTE: We intentionally do NOT pause on DXGI_STATUS_OCCLUDED (some Win10
+            // WorkerW-parented windows report themselves permanently occluded, which would
+            // stop the wallpaper forever). Resource use is bounded by the sync interval and
+            // the fullscreen/battery auto-pause above.
             if (!m_isPaused && !isAutoPaused) {
                 m_renderer.RenderFrame();
-                m_renderer.Present();
-
-                // Frame limiter: sleep off whatever time is left in the frame budget so we
-                // don't render faster than maxFPS (VSync alone would run at monitor refresh).
-                LARGE_INTEGER now;
-                QueryPerformanceCounter(&now);
-                double frameElapsed = (double)(now.QuadPart - frameStart.QuadPart) / freq.QuadPart;
-                double remaining = targetFrameSec - frameElapsed;
-                if (remaining > 0.0) {
-                    Sleep((DWORD)(remaining * 1000.0));
-                }
+                // Hardware VSync pacing — no Sleep-based limiter, so no judder even on
+                // high-refresh (144 Hz+) monitors.
+                m_renderer.Present(syncInterval);
             } else {
                 Sleep(100); // manual/auto pause: idle cheaply
             }

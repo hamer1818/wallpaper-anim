@@ -77,12 +77,11 @@ namespace winrt::WallpaperAnimWinUI::implementation
         TglStartup().IsOn(isStartup);
 
         LogApp("MainWindow: Setting FPS selector");
-        // Map the stored maxFPS onto the 15/24/30/60 choices (default 30).
-        int fpsIdx = 2;
-        if (config.maxFPS <= 15) fpsIdx = 0;
-        else if (config.maxFPS <= 24) fpsIdx = 1;
-        else if (config.maxFPS <= 30) fpsIdx = 2;
-        else fpsIdx = 3;
+        // Options: 0 = Maximum (monitor Hz), 1 = 60 FPS, 2 = 30 FPS.
+        int fpsIdx = 0;
+        if (config.maxFPS == 60) fpsIdx = 1;
+        else if (config.maxFPS == 30) fpsIdx = 2;
+        else fpsIdx = 0; // 0 or anything else = Maximum
         CmbFps().SelectedIndex(fpsIdx);
 
         LogApp("MainWindow: Setting language selector");
@@ -533,17 +532,16 @@ namespace winrt::WallpaperAnimWinUI::implementation
     void MainWindow::CmbFps_SelectionChanged(IInspectable const&, SelectionChangedEventArgs const&)
     {
         auto& config = Config::ConfigManager::GetInstance().GetConfig();
-        int fps = 30;
+        int fps = 0; // Maximum (monitor Hz)
         switch (CmbFps().SelectedIndex()) {
-            case 0: fps = 15; break;
-            case 1: fps = 24; break;
+            case 0: fps = 0;  break; // Maximum
+            case 1: fps = 60; break;
             case 2: fps = 30; break;
-            case 3: fps = 60; break;
         }
         config.maxFPS = fps;
         Config::ConfigManager::GetInstance().Save();
         // App::RenderLoop re-reads config.maxFPS on its next 1-second check, so the new
-        // frame cap takes effect automatically within a second — no restart needed.
+        // frame rate takes effect automatically within a second — no restart needed.
     }
 
     void MainWindow::BtnUpdate_Click(IInspectable const&, RoutedEventArgs const&)

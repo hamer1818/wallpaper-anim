@@ -19,7 +19,7 @@ namespace Config {
     struct AppConfig {
         int configVersion = kCurrentConfigVersion;
         std::wstring lastVideoPath;
-        int maxFPS = 30;
+        int maxFPS = 0; // 0 = match the monitor's refresh rate (smoothest)
         bool pauseOnFullscreen = true;
         bool pauseOnBattery = false;
         bool isFirstRun = true;

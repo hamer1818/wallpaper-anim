@@ -153,9 +153,9 @@ namespace Render {
         }
     }
 
-    HRESULT DX11Renderer::Present() {
+    HRESULT DX11Renderer::Present(UINT syncInterval) {
         if (m_swapChain) {
-            return m_swapChain->Present(1, 0); // VSync enabled
+            return m_swapChain->Present(syncInterval, 0); // VSync-paced by the hardware
         }
         return S_OK;
     }

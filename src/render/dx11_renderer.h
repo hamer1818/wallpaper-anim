@@ -20,9 +20,10 @@ namespace Render {
         void Cleanup();
 
         void RenderFrame();
-        // Presents the current frame. Returns the HRESULT from IDXGISwapChain::Present
-        // so callers can react to DXGI_STATUS_OCCLUDED and stop rendering while hidden.
-        HRESULT Present();
+        // Presents the current frame. syncInterval is the number of vblanks to wait
+        // (1 = every refresh = smoothest at monitor Hz; 2 = half rate; etc.). Pacing is
+        // done by the hardware here, which is judder-free unlike a Sleep-based limiter.
+        HRESULT Present(UINT syncInterval = 1);
         // Non-rendering present used to poll whether the window is still occluded.
         HRESULT TestOcclusion();
         // Resizes the swap chain buffers (e.g. after a resolution / display change).
