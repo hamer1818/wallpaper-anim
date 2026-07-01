@@ -93,20 +93,27 @@ namespace winrt::WallpaperAnimWinUI::implementation
             nullptr, nullptr, hInstance, this
         );
 
+        DesktopIntegration::DiagLog("OnLaunched: wallpaperHwnd=" + std::to_string((uintptr_t)m_wallpaperHwnd) +
+                                    " virt=(" + std::to_string(vx) + "," + std::to_string(vy) + "," +
+                                    std::to_string(vcx) + "," + std::to_string(vcy) + ")");
         if (m_wallpaperHwnd == nullptr) {
+            DesktopIntegration::DiagLog("FAIL: CreateWindowEx returned null, err=" + std::to_string(GetLastError()));
             return;
         }
 
         // Initialize DirectX 11 on the wallpaper window
         LogApp("Initializing Renderer...");
         if (!m_renderer.Initialize(m_wallpaperHwnd)) {
+            DesktopIntegration::DiagLog("FAIL: DX11 renderer init failed");
             MessageBox(nullptr, L"DirectX 11 baslatilamadi.", L"Hata", MB_OK | MB_ICONERROR);
             return;
         }
+        DesktopIntegration::DiagLog("Renderer initialized OK");
 
         // Setup Desktop Integration (WorkerW parenting)
         LogApp("Setting up Desktop Integration...");
         if (!DesktopIntegration::SetupWallpaperWindow(m_wallpaperHwnd)) {
+            DesktopIntegration::DiagLog("FAIL: SetupWallpaperWindow returned false");
             MessageBox(nullptr, L"Masaustu entegrasyonu basarisiz oldu.", L"Hata", MB_OK | MB_ICONERROR);
             return;
         }
@@ -123,7 +130,8 @@ namespace winrt::WallpaperAnimWinUI::implementation
             std::wstring exePath = path;
             videoPath = exePath.substr(0, exePath.find_last_of(L"\\/")) + L"\\assets\\sample.mp4";
         }
-        LoadMedia(videoPath);
+        bool initialOk = LoadMedia(videoPath);
+        DesktopIntegration::DiagLog("Initial LoadMedia ok=" + std::to_string(initialOk));
 
         // Start background rendering thread
         m_running = true;
@@ -276,7 +284,10 @@ namespace winrt::WallpaperAnimWinUI::implementation
 
         case WM_APP_CONFIG_CHANGED: {
             auto& config = Config::ConfigManager::GetInstance().GetConfig();
+            std::wstring p = config.lastVideoPath;
+            DesktopIntegration::DiagLog("WM_APP_CONFIG_CHANGED: loading new media (len=" + std::to_string(p.size()) + ")");
             if (!LoadMedia(config.lastVideoPath)) {
+                DesktopIntegration::DiagLog("WM_APP_CONFIG_CHANGED: LoadMedia FAILED");
                 // Tell the user why nothing changed instead of failing silently.
                 auto& strings = Localization::Get();
                 auto toWide = [](const char* utf8) {

@@ -2,8 +2,8 @@
 
 #define APP_VERSION_MAJOR 1
 #define APP_VERSION_MINOR 4
-#define APP_VERSION_PATCH 2
-#define APP_VERSION_STRING "1.4.2"
+#define APP_VERSION_PATCH 3
+#define APP_VERSION_STRING "1.4.3"
 
 // Wide-string form for WinUI / wide APIs
 #define APP_WIDEN2(x) L##x
