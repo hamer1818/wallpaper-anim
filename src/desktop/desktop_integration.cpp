@@ -50,9 +50,9 @@ namespace DesktopIntegration {
         // creation can be asynchronous, so poll the enumeration a few times.
         DWORD_PTR result = 0;
         SendMessageTimeout(progman, 0x052C, 0, 0, SMTO_NORMAL, 1000, &result);
-        for (int i = 0; i < 10 && !g_workerW; ++i) {
+        for (int i = 0; i < 5 && !g_workerW; ++i) {
             EnumWindows(EnumWindowsProc, 0);
-            if (!g_workerW) Sleep(80);
+            if (!g_workerW) Sleep(60);
         }
         DiagLog("After 0x052C(0,0): WorkerW=" + std::to_string((uintptr_t)g_workerW));
 
@@ -60,9 +60,9 @@ namespace DesktopIntegration {
         // variant. Retry with it if the first attempt did not surface a WorkerW.
         if (!g_workerW) {
             SendMessageTimeout(progman, 0x052C, 0xD, 0x1, SMTO_NORMAL, 1000, &result);
-            for (int i = 0; i < 10 && !g_workerW; ++i) {
+            for (int i = 0; i < 5 && !g_workerW; ++i) {
                 EnumWindows(EnumWindowsProc, 0);
-                if (!g_workerW) Sleep(80);
+                if (!g_workerW) Sleep(60);
             }
             DiagLog("After 0x052C(0xD,1): WorkerW=" + std::to_string((uintptr_t)g_workerW));
         }
@@ -84,9 +84,24 @@ namespace DesktopIntegration {
         int screenWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
         int screenHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
 
-        // Put it at the bottom of the parent's z-order (behind the icons) and show it.
-        SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, screenWidth, screenHeight,
-                     SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        if (g_workerW) {
+            // Windows 10: child of the empty WorkerW behind the icons — just fill it.
+            SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, screenWidth, screenHeight,
+                         SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        } else {
+            // Windows 11 fallback: parented to Progman, which itself paints the wallpaper.
+            // We must sit right behind the icon view (SHELLDLL_DefView), NOT at the very
+            // bottom, or Progman's own wallpaper layer covers us.
+            HWND defView = FindWindowEx(progman, nullptr, L"SHELLDLL_DefView", nullptr);
+            DiagLog("Progman fallback: defView=" + std::to_string((uintptr_t)defView));
+            if (defView) {
+                SetWindowPos(hwnd, defView, 0, 0, screenWidth, screenHeight,
+                             SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            } else {
+                SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, screenWidth, screenHeight,
+                             SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            }
+        }
         ShowWindow(hwnd, SW_SHOWNA);
 
         RECT rc = {};
