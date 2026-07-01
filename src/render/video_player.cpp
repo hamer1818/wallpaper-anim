@@ -203,6 +203,25 @@ namespace Render {
 
         if (!CreateFrameTexture(m_videoWidth, m_videoHeight)) return false;
 
+        // Probe-decode one frame. Some codecs (notably VP9/AV1 on stock Windows 10)
+        // let the topology build but fail at actual decode time, which would otherwise
+        // show nothing with no error. Failing here lets the caller report it instead.
+        {
+            DWORD probeStream = 0, probeFlags = 0;
+            LONGLONG probeTs = 0;
+            ComPtr<IMFSample> probeSample;
+            HRESULT probeHr = m_sourceReader->ReadSample(
+                (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                0, &probeStream, &probeFlags, &probeTs, &probeSample);
+            if (FAILED(probeHr)) return false;
+
+            // Rewind so playback still starts from the first frame.
+            PROPVARIANT var = {};
+            var.vt = VT_I8;
+            var.hVal.QuadPart = 0;
+            m_sourceReader->SetCurrentPosition(GUID_NULL, var);
+        }
+
         m_lastFrameTime = 0;
         m_isPlaying = true;
         return true;

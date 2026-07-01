@@ -29,6 +29,10 @@ namespace {
         return GetExeDirW() + L"yt-dlp.exe";
     }
 
+    std::wstring GetFfmpegPathW() {
+        return GetExeDirW() + L"ffmpeg.exe";
+    }
+
     // ANSI (CP_ACP) narrow path, matching what CreateProcessA expects.
     std::string ToAnsi(const std::wstring& ws) {
         int len = WideCharToMultiByte(CP_ACP, 0, ws.c_str(), -1, NULL, 0, NULL, NULL);
@@ -216,19 +220,32 @@ namespace Utils {
 
             std::string ytDlp = GetYtDlpPathA();
 
-            // Prefer H.264 video + m4a audio within the height cap so the merged MP4 is
-            // universally playable. Fall back progressively, ending at plain "best".
-            std::string h = std::to_string(maxHeight);
-            std::string fmt =
-                "bestvideo[vcodec^=avc1][height<=" + h + "]+bestaudio[ext=m4a]/"
-                "best[vcodec^=avc1][height<=" + h + "]/"
-                "bestvideo[ext=mp4][height<=" + h + "]+bestaudio/"
-                "best[ext=mp4][height<=" + h + "]/"
-                "best[height<=" + h + "]/best";
+            // Merging separate video+audio streams requires ffmpeg. When it ships next to
+            // us we can grab the best H.264 up to the height cap and merge; without it we
+            // must stick to single-file (progressive) H.264 so we never end up with a
+            // VP9/AV1 file that Media Foundation can't decode on stock Windows 10.
+            std::wstring ffmpegW = GetFfmpegPathW();
+            bool hasFfmpeg = (GetFileAttributesW(ffmpegW.c_str()) != INVALID_FILE_ATTRIBUTES);
 
-            // --merge-output-format mp4 ensures a single .mp4 output; --recode isn't used
-            // to avoid requiring ffmpeg re-encode when streams are already mp4-compatible.
-            std::string cmd = "\"" + ytDlp + "\" -f \"" + fmt + "\" --merge-output-format mp4 -o \"" + cacheDirMbs + "\\%(id)s.%(ext)s\" --newline \"" + url + "\"";
+            std::string h = std::to_string(maxHeight);
+            std::string fmt;
+            if (hasFfmpeg) {
+                fmt =
+                    "bestvideo[vcodec^=avc1][height<=" + h + "]+bestaudio[ext=m4a]/"
+                    "best[vcodec^=avc1][height<=" + h + "]/"
+                    "bestvideo[ext=mp4][height<=" + h + "]+bestaudio/"
+                    "best[ext=mp4][height<=" + h + "]/"
+                    "22/18";
+            } else {
+                // Single-file H.264 only (format 22 ~720p, 18 ~360p are always progressive).
+                fmt =
+                    "best[vcodec^=avc1][acodec!=none][height<=" + h + "]/"
+                    "22/18";
+            }
+
+            std::string ffmpegArg = hasFfmpeg ? (" --ffmpeg-location \"" + ToAnsi(ffmpegW) + "\"") : std::string();
+
+            std::string cmd = "\"" + ytDlp + "\" -f \"" + fmt + "\" --merge-output-format mp4" + ffmpegArg + " -o \"" + cacheDirMbs + "\\%(id)s.%(ext)s\" --newline \"" + url + "\"";
             
             std::regex progRegex(R"(\[download\]\s+([0-9.]+)%)");
             CmdResult execRes = RunCommandHidden(cmd, [&](const std::string& line) {

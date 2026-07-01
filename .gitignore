@@ -9,8 +9,9 @@ build/
 .vs/
 *.user
 
-# Large binaries
+# Large binaries (fetched by CI / placed manually; never committed)
 yt-dlp.exe
+ffmpeg.exe
 
 # Archives
 *.zip

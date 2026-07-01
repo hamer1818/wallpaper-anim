@@ -31,6 +31,18 @@ jobs:
           # project's copy-to-output step and the setup/portable packaging can include it.
           Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "yt-dlp.exe"
 
+      - name: Download ffmpeg.exe
+        shell: pwsh
+        run: |
+          # ffmpeg lets yt-dlp merge separate H.264 video+audio streams into a single MP4,
+          # so downloaded wallpapers are always Media Foundation-playable (incl. Windows 10).
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile "ffmpeg.zip"
+          Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_tmp" -Force
+          $exe = Get-ChildItem -Path "ffmpeg_tmp" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+          Copy-Item -Path $exe.FullName -Destination "ffmpeg.exe" -Force
+          Remove-Item -Path "ffmpeg.zip","ffmpeg_tmp" -Recurse -Force
+          Write-Host "ffmpeg.exe ready: $((Get-Item ffmpeg.exe).Length / 1MB) MB"
+
       - name: Restore NuGet packages
         run: nuget restore packages.config -PackagesDirectory packages
 
