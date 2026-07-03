@@ -26,6 +26,10 @@ namespace Config {
         int fitMode = 0;
         bool pauseOnFullscreen = true;
         bool pauseOnBattery = false;
+        // Auto-rotation: cycle through the library on a timer.
+        bool playlistEnabled = false;
+        int playlistIntervalMin = 30; // minutes between switches
+        bool playlistShuffle = false;
         bool isFirstRun = true;
         bool hideMinimizeWarning = false;
         int64_t lastUpdateCheck = 0;

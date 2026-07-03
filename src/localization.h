@@ -97,6 +97,12 @@ namespace Localization {
 
         // Fit mode (label only; ComboBox items are set in XAML)
         const char* fitModeLabel;
+
+        // Playlist / auto-rotation
+        const char* playlistTitle;
+        const char* playlistDesc;
+        const char* playlistShuffle;
+        const char* playlistIntervalLabel;
     };
 
     inline const Strings& Get() {
@@ -175,6 +181,11 @@ namespace Localization {
             "Bu video oynatılamadı. Codec'i (ör. VP9/AV1) bu Windows sürümünde desteklenmiyor olabilir. Lütfen farklı bir video deneyin.",
 
             "Sığdırma Modu",
+
+            "Duvar Kağıtlarını Otomatik Değiştir",
+            "Kütüphanedeki duvar kağıtlarını belirli aralıklarla sırayla değiştirir.",
+            "Karıştır",
+            "Değiştirme Aralığı",
         };
 
         static const Strings en = {
@@ -252,6 +263,11 @@ namespace Localization {
             "This video could not be played. Its codec (e.g. VP9/AV1) may be unsupported on this Windows version. Please try a different video.",
 
             "Fit Mode",
+
+            "Auto-Rotate Wallpapers",
+            "Cycles through your library at a set interval.",
+            "Shuffle",
+            "Rotation Interval",
         };
 
         std::wstring lang = Config::ConfigManager::GetInstance().GetConfig().language;

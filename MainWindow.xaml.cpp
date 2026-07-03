@@ -89,6 +89,18 @@ namespace winrt::WallpaperAnimWinUI::implementation
         if (fitIdx < 0 || fitIdx > 3) fitIdx = 0;
         CmbFitMode().SelectedIndex(fitIdx);
 
+        // Playlist / auto-rotation.
+        TglPlaylist().IsOn(config.playlistEnabled);
+        TglShuffle().IsOn(config.playlistShuffle);
+        int intervalIdx = 2; // default 30 min
+        switch (config.playlistIntervalMin) {
+            case 5:  intervalIdx = 0; break;
+            case 15: intervalIdx = 1; break;
+            case 30: intervalIdx = 2; break;
+            case 60: intervalIdx = 3; break;
+        }
+        CmbPlaylistInterval().SelectedIndex(intervalIdx);
+
         LogApp("MainWindow: Setting language selector");
         if (config.language == L"en") CmbLanguage().SelectedIndex(1);
         else CmbLanguage().SelectedIndex(0);
@@ -203,6 +215,10 @@ namespace winrt::WallpaperAnimWinUI::implementation
         TxtTglStartupDesc().Text(winrt::to_hstring(strings.runAtStartupDesc));
         TxtFpsLabel().Text(winrt::to_hstring(strings.maxFps));
         TxtFitModeLabel().Text(winrt::to_hstring(strings.fitModeLabel));
+        TglPlaylist().Header(box_value(winrt::to_hstring(strings.playlistTitle)));
+        TxtPlaylistDesc().Text(winrt::to_hstring(strings.playlistDesc));
+        TglShuffle().Header(box_value(winrt::to_hstring(strings.playlistShuffle)));
+        TxtPlaylistIntervalLabel().Text(winrt::to_hstring(strings.playlistIntervalLabel));
         TxtLanguageLabel().Text(winrt::to_hstring(strings.languageLabel));
 
         // Update UI
@@ -559,6 +575,35 @@ namespace winrt::WallpaperAnimWinUI::implementation
         Config::ConfigManager::GetInstance().Save();
         // DX11Renderer::SetFitScale reads config.fitMode live each frame, so the change
         // is visible on the next rendered frame — no reload/restart needed.
+    }
+
+    void MainWindow::TglPlaylist_Toggled(IInspectable const&, RoutedEventArgs const&)
+    {
+        auto& config = Config::ConfigManager::GetInstance().GetConfig();
+        config.playlistEnabled = TglPlaylist().IsOn();
+        Config::ConfigManager::GetInstance().Save();
+        // App::RenderLoop re-reads playlist settings on its next 1-second check.
+    }
+
+    void MainWindow::TglShuffle_Toggled(IInspectable const&, RoutedEventArgs const&)
+    {
+        auto& config = Config::ConfigManager::GetInstance().GetConfig();
+        config.playlistShuffle = TglShuffle().IsOn();
+        Config::ConfigManager::GetInstance().Save();
+    }
+
+    void MainWindow::CmbPlaylistInterval_SelectionChanged(IInspectable const&, SelectionChangedEventArgs const&)
+    {
+        auto& config = Config::ConfigManager::GetInstance().GetConfig();
+        int minutes = 30;
+        switch (CmbPlaylistInterval().SelectedIndex()) {
+            case 0: minutes = 5;  break;
+            case 1: minutes = 15; break;
+            case 2: minutes = 30; break;
+            case 3: minutes = 60; break;
+        }
+        config.playlistIntervalMin = minutes;
+        Config::ConfigManager::GetInstance().Save();
     }
 
     void MainWindow::BtnUpdate_Click(IInspectable const&, RoutedEventArgs const&)

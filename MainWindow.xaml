@@ -150,6 +150,19 @@
                         </StackPanel>
 
                         <StackPanel Spacing="8">
+                            <ToggleSwitch x:Name="TglPlaylist" Header="Duvar Kağıtlarını Otomatik Değiştir" Toggled="TglPlaylist_Toggled" Foreground="White"/>
+                            <TextBlock x:Name="TxtPlaylistDesc" Text="Kütüphanedeki duvar kağıtlarını belirli aralıklarla sırayla değiştirir." FontSize="12" Foreground="#AAAAAA"/>
+                            <ToggleSwitch x:Name="TglShuffle" Header="Karıştır" Toggled="TglShuffle_Toggled" Foreground="White"/>
+                            <TextBlock x:Name="TxtPlaylistIntervalLabel" Text="Değiştirme Aralığı" FontWeight="SemiBold" Foreground="White"/>
+                            <ComboBox x:Name="CmbPlaylistInterval" Width="240" SelectionChanged="CmbPlaylistInterval_SelectionChanged" Background="#1E1E1E" Foreground="White">
+                                <ComboBoxItem Content="5 dakika"/>
+                                <ComboBoxItem Content="15 dakika"/>
+                                <ComboBoxItem Content="30 dakika"/>
+                                <ComboBoxItem Content="60 dakika"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
                             <TextBlock x:Name="TxtLanguageLabel" Text="Dil (Language)" FontWeight="SemiBold" Foreground="White"/>
                             <ComboBox x:Name="CmbLanguage" Width="200" SelectionChanged="CmbLanguage_SelectionChanged" Background="#1E1E1E" Foreground="White">
                                 <ComboBoxItem Content="Türkçe"/>

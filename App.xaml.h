@@ -8,6 +8,9 @@
 #include "src/tray.h"
 
 #define WM_APP_CONFIG_CHANGED (WM_APP + 1)
+// Posted by the render thread when the playlist interval elapses; the handler advances
+// to the next library item on the window's own thread (same path as UI-driven loads).
+#define WM_APP_PLAYLIST_NEXT (WM_APP + 2)
 
 namespace winrt::WallpaperAnimWinUI::implementation
 {

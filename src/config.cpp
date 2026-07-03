@@ -57,6 +57,9 @@ namespace Config {
                 m_config.fitMode = j.value("fitMode", 0);
                 m_config.pauseOnFullscreen = j.value("pauseOnFullscreen", true);
                 m_config.pauseOnBattery = j.value("pauseOnBattery", false);
+                m_config.playlistEnabled = j.value("playlistEnabled", false);
+                m_config.playlistIntervalMin = j.value("playlistIntervalMin", 30);
+                m_config.playlistShuffle = j.value("playlistShuffle", false);
                 m_config.isFirstRun = j.value("isFirstRun", true);
                 m_config.hideMinimizeWarning = j.value("hideMinimizeWarning", false);
                 m_config.lastUpdateCheck = j.value("lastUpdateCheck", (int64_t)0);
@@ -98,6 +101,9 @@ namespace Config {
         j["fitMode"] = m_config.fitMode;
         j["pauseOnFullscreen"] = m_config.pauseOnFullscreen;
         j["pauseOnBattery"] = m_config.pauseOnBattery;
+        j["playlistEnabled"] = m_config.playlistEnabled;
+        j["playlistIntervalMin"] = m_config.playlistIntervalMin;
+        j["playlistShuffle"] = m_config.playlistShuffle;
         j["isFirstRun"] = m_config.isFirstRun;
         j["hideMinimizeWarning"] = m_config.hideMinimizeWarning;
         j["lastUpdateCheck"] = m_config.lastUpdateCheck;

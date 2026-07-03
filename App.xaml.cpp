@@ -223,6 +223,7 @@ namespace winrt::WallpaperAnimWinUI::implementation
         QueryPerformanceCounter(&lastCheckTime);
 
         bool isAutoPaused = false;
+        LARGE_INTEGER lastSwitchTime = lastCheckTime; // playlist rotation timer
 
         int refreshRate = GetPrimaryRefreshRate();
         UINT syncInterval = ComputeSyncInterval(Config::ConfigManager::GetInstance().GetConfig().maxFPS, refreshRate);
@@ -254,6 +255,20 @@ namespace winrt::WallpaperAnimWinUI::implementation
                 // Refresh rate can change (e.g. monitor switch); recompute pacing.
                 refreshRate = GetPrimaryRefreshRate();
                 syncInterval = ComputeSyncInterval(config.maxFPS, refreshRate);
+
+                // Playlist auto-rotation: when enabled and there's more than one item,
+                // advance to the next library entry every playlistIntervalMin minutes.
+                // The switch itself is done on the window thread via a posted message.
+                if (config.playlistEnabled && config.history.size() >= 2) {
+                    int intervalMin = config.playlistIntervalMin > 0 ? config.playlistIntervalMin : 30;
+                    double sinceSwitch = (double)(frameStart.QuadPart - lastSwitchTime.QuadPart) / freq.QuadPart;
+                    if (sinceSwitch >= intervalMin * 60.0) {
+                        lastSwitchTime = frameStart;
+                        PostMessage(m_wallpaperHwnd, WM_APP_PLAYLIST_NEXT, 0, 0);
+                    }
+                } else {
+                    lastSwitchTime = frameStart; // keep timer fresh while disabled
+                }
             }
 
             // NOTE: We intentionally do NOT pause on DXGI_STATUS_OCCLUDED (some Win10
@@ -319,6 +334,32 @@ namespace winrt::WallpaperAnimWinUI::implementation
                 };
                 MessageBoxW(nullptr, toWide(strings.mediaLoadFailed).c_str(),
                             toWide(strings.mediaLoadFailedTitle).c_str(), MB_OK | MB_ICONWARNING);
+            }
+            return 0;
+        }
+
+        case WM_APP_PLAYLIST_NEXT: {
+            auto& config = Config::ConfigManager::GetInstance().GetConfig();
+            if (config.history.size() < 2) return 0;
+
+            // Find where the current wallpaper sits in the library, then pick the next one
+            // (random when shuffle is on, otherwise the following entry, wrapping around).
+            size_t current = 0;
+            for (size_t i = 0; i < config.history.size(); ++i) {
+                if (config.history[i].path == config.lastVideoPath) { current = i; break; }
+            }
+            size_t next;
+            if (config.playlistShuffle) {
+                do { next = (size_t)rand() % config.history.size(); }
+                while (next == current && config.history.size() > 1);
+            } else {
+                next = (current + 1) % config.history.size();
+            }
+
+            const std::wstring nextPath = config.history[next].path;
+            if (LoadMedia(nextPath)) {
+                config.lastVideoPath = nextPath;
+                Config::ConfigManager::GetInstance().Save();
             }
             return 0;
         }
