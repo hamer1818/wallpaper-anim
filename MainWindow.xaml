@@ -140,6 +140,16 @@
                         </StackPanel>
 
                         <StackPanel Spacing="8">
+                            <TextBlock x:Name="TxtFitModeLabel" Text="Sığdırma Modu" FontWeight="SemiBold" Foreground="White"/>
+                            <ComboBox x:Name="CmbFitMode" Width="240" SelectionChanged="CmbFitMode_SelectionChanged" Background="#1E1E1E" Foreground="White">
+                                <ComboBoxItem Content="Doldur (kırp)"/>
+                                <ComboBoxItem Content="Sığdır (kenar boşluğu)"/>
+                                <ComboBoxItem Content="Uzat"/>
+                                <ComboBoxItem Content="Ortala"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
                             <TextBlock x:Name="TxtLanguageLabel" Text="Dil (Language)" FontWeight="SemiBold" Foreground="White"/>
                             <ComboBox x:Name="CmbLanguage" Width="200" SelectionChanged="CmbLanguage_SelectionChanged" Background="#1E1E1E" Foreground="White">
                                 <ComboBoxItem Content="Türkçe"/>

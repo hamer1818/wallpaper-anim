@@ -23,6 +23,7 @@ namespace Render {
 
         bool UpdateFrame() override;
         void Render() override;
+        void GetContentSize(UINT& width, UINT& height) const override { width = m_width; height = m_height; }
         void Cleanup() override;
 
     private:

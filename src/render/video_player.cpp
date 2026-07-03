@@ -22,9 +22,12 @@ namespace Render {
             float4 pos : SV_POSITION;
             float2 tex : TEXCOORD;
         };
+        cbuffer TransformCB : register(b1) {
+            float4 uScale; // xy = per-monitor aspect-fit scale applied in NDC
+        };
         PS_INPUT VSMain(VS_INPUT input) {
             PS_INPUT output;
-            output.pos = float4(input.pos, 1.0f);
+            output.pos = float4(input.pos.xy * uScale.xy, input.pos.z, 1.0f);
             output.tex = input.tex;
             return output;
         }

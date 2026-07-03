@@ -1,5 +1,6 @@
 #include "dx11_renderer.h"
 #include "media_player.h"
+#include "../config.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -16,6 +17,7 @@ namespace Render {
         m_hwnd = hwnd;
         if (!CreateDeviceAndSwapChain()) return false;
         if (!CreateRenderTarget()) return false;
+        if (!CreateScaleBuffer()) return false;
 
         // Set the viewport
         RECT rc;
@@ -68,8 +70,56 @@ namespace Render {
         }
     }
 
+    bool DX11Renderer::CreateScaleBuffer() {
+        D3D11_BUFFER_DESC bd = {};
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.ByteWidth = 16; // float4
+        bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(m_device->CreateBuffer(&bd, nullptr, &m_scaleCB))) return false;
+
+        D3D11_RASTERIZER_DESC rd = {};
+        rd.FillMode = D3D11_FILL_SOLID;
+        rd.CullMode = D3D11_CULL_NONE;
+        rd.DepthClipEnable = TRUE;
+        rd.ScissorEnable = TRUE; // clip each monitor's draw to its own rect
+        return SUCCEEDED(m_device->CreateRasterizerState(&rd, &m_scissorRaster));
+    }
+
+    void DX11Renderer::SetFitScale(const D3D11_VIEWPORT& vp, UINT contentW, UINT contentH) {
+        float sx = 1.0f, sy = 1.0f;
+        if (contentW > 0 && contentH > 0 && vp.Width > 0 && vp.Height > 0) {
+            const float va = (float)contentW / (float)contentH; // content aspect
+            const float ma = vp.Width / vp.Height;              // monitor aspect
+            switch (Config::ConfigManager::GetInstance().GetConfig().fitMode) {
+            case 0: // Fill: cover the monitor, cropping the overflow axis
+                if (va > ma) sx = va / ma; else sy = ma / va;
+                break;
+            case 1: // Fit: letterbox so the whole frame is visible
+                if (va > ma) sy = ma / va; else sx = va / ma;
+                break;
+            case 2: // Stretch: leave 1:1 (fills viewport exactly, may distort)
+                break;
+            case 3: // Center: draw at native pixel size, centered
+                sx = (float)contentW / vp.Width;
+                sy = (float)contentH / vp.Height;
+                break;
+            }
+        }
+
+        D3D11_MAPPED_SUBRESOURCE m;
+        if (SUCCEEDED(m_context->Map(m_scaleCB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+            float* f = (float*)m.pData;
+            f[0] = sx; f[1] = sy; f[2] = 0.0f; f[3] = 0.0f;
+            m_context->Unmap(m_scaleCB.Get(), 0);
+        }
+        m_context->VSSetConstantBuffers(1, 1, m_scaleCB.GetAddressOf());
+    }
+
     void DX11Renderer::Cleanup() {
         if (m_context) m_context->ClearState();
+        m_scaleCB.Reset();
+        m_scissorRaster.Reset();
         m_renderTargetView.Reset();
         m_swapChain.Reset();
         m_context.Reset();
@@ -146,13 +196,30 @@ namespace Render {
         float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
         m_context->ClearRenderTargetView(m_renderTargetView.Get(), clearColor);
 
-        // Draw the frame into each monitor's viewport.
-        if (m_viewports.empty()) {
+        // Draw the frame into each monitor's viewport, scaled to preserve the media's
+        // aspect ratio per the active fit mode. Scissor clipping keeps Fill/Center
+        // overflow inside the monitor it belongs to.
+        m_context->RSSetState(m_scissorRaster.Get());
+        UINT cw = 0, ch = 0;
+        m_mediaPlayer->GetContentSize(cw, ch);
+        auto drawViewport = [&](const D3D11_VIEWPORT& vp) {
+            m_context->RSSetViewports(1, &vp);
+            D3D11_RECT scissor = {
+                (LONG)vp.TopLeftX, (LONG)vp.TopLeftY,
+                (LONG)(vp.TopLeftX + vp.Width), (LONG)(vp.TopLeftY + vp.Height)
+            };
+            m_context->RSSetScissorRects(1, &scissor);
+            SetFitScale(vp, cw, ch);
             m_mediaPlayer->Render();
+        };
+        if (m_viewports.empty()) {
+            D3D11_VIEWPORT vp;
+            UINT n = 1;
+            m_context->RSGetViewports(&n, &vp);
+            drawViewport(vp);
         } else {
             for (const auto& vp : m_viewports) {
-                m_context->RSSetViewports(1, &vp);
-                m_mediaPlayer->Render();
+                drawViewport(vp);
             }
         }
         return true;

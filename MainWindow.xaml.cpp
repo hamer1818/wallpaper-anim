@@ -84,6 +84,11 @@ namespace winrt::WallpaperAnimWinUI::implementation
         else fpsIdx = 0; // 0 or anything else = Maximum
         CmbFps().SelectedIndex(fpsIdx);
 
+        // Fit mode: 0=Fill, 1=Fit, 2=Stretch, 3=Center (matches ComboBox item order).
+        int fitIdx = config.fitMode;
+        if (fitIdx < 0 || fitIdx > 3) fitIdx = 0;
+        CmbFitMode().SelectedIndex(fitIdx);
+
         LogApp("MainWindow: Setting language selector");
         if (config.language == L"en") CmbLanguage().SelectedIndex(1);
         else CmbLanguage().SelectedIndex(0);
@@ -197,6 +202,7 @@ namespace winrt::WallpaperAnimWinUI::implementation
         TglStartup().Header(box_value(winrt::to_hstring(strings.runAtStartup)));
         TxtTglStartupDesc().Text(winrt::to_hstring(strings.runAtStartupDesc));
         TxtFpsLabel().Text(winrt::to_hstring(strings.maxFps));
+        TxtFitModeLabel().Text(winrt::to_hstring(strings.fitModeLabel));
         TxtLanguageLabel().Text(winrt::to_hstring(strings.languageLabel));
 
         // Update UI
@@ -542,6 +548,17 @@ namespace winrt::WallpaperAnimWinUI::implementation
         Config::ConfigManager::GetInstance().Save();
         // App::RenderLoop re-reads config.maxFPS on its next 1-second check, so the new
         // frame rate takes effect automatically within a second — no restart needed.
+    }
+
+    void MainWindow::CmbFitMode_SelectionChanged(IInspectable const&, SelectionChangedEventArgs const&)
+    {
+        auto& config = Config::ConfigManager::GetInstance().GetConfig();
+        int idx = CmbFitMode().SelectedIndex();
+        if (idx < 0) return;
+        config.fitMode = idx; // 0=Fill, 1=Fit, 2=Stretch, 3=Center
+        Config::ConfigManager::GetInstance().Save();
+        // DX11Renderer::SetFitScale reads config.fitMode live each frame, so the change
+        // is visible on the next rendered frame — no reload/restart needed.
     }
 
     void MainWindow::BtnUpdate_Click(IInspectable const&, RoutedEventArgs const&)

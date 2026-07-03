@@ -19,6 +19,11 @@ namespace Render {
 
         virtual bool UpdateFrame() = 0;
         virtual void Render() = 0;
+
+        // Native content size in pixels, used to preserve aspect ratio when fitting the
+        // media to a monitor. Return (0, 0) for content that has no intrinsic size and
+        // should always fill the viewport (e.g. a procedural shader).
+        virtual void GetContentSize(UINT& width, UINT& height) const { width = 0; height = 0; }
         
         virtual void Cleanup() = 0;
     };

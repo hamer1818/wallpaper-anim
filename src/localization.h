@@ -94,6 +94,9 @@ namespace Localization {
         // Media playback errors
         const char* mediaLoadFailedTitle;
         const char* mediaLoadFailed;
+
+        // Fit mode (label only; ComboBox items are set in XAML)
+        const char* fitModeLabel;
     };
 
     inline const Strings& Get() {
@@ -170,6 +173,8 @@ namespace Localization {
 
             "Oynatılamadı",
             "Bu video oynatılamadı. Codec'i (ör. VP9/AV1) bu Windows sürümünde desteklenmiyor olabilir. Lütfen farklı bir video deneyin.",
+
+            "Sığdırma Modu",
         };
 
         static const Strings en = {
@@ -245,6 +250,8 @@ namespace Localization {
 
             "Playback failed",
             "This video could not be played. Its codec (e.g. VP9/AV1) may be unsupported on this Windows version. Please try a different video.",
+
+            "Fit Mode",
         };
 
         std::wstring lang = Config::ConfigManager::GetInstance().GetConfig().language;

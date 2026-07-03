@@ -20,6 +20,10 @@ namespace Config {
         int configVersion = kCurrentConfigVersion;
         std::wstring lastVideoPath;
         int maxFPS = 0; // 0 = match the monitor's refresh rate (smoothest)
+        // How the media is fitted to each monitor when its aspect ratio differs:
+        // 0 = Fill (preserve aspect, crop overflow), 1 = Fit (preserve aspect, letterbox),
+        // 2 = Stretch (fill exactly, may distort), 3 = Center (native pixels, centered).
+        int fitMode = 0;
         bool pauseOnFullscreen = true;
         bool pauseOnBattery = false;
         bool isFirstRun = true;

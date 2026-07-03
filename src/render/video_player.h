@@ -31,6 +31,8 @@ namespace Render {
         // Renders the current frame to the screen
         void Render() override;
 
+        void GetContentSize(UINT& width, UINT& height) const override { width = m_videoWidth; height = m_videoHeight; }
+
         void Cleanup() override;
 
         float GetFPS() const { return m_fps; }

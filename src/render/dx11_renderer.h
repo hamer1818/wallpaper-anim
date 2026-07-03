@@ -61,5 +61,15 @@ namespace Render {
         std::vector<D3D11_VIEWPORT> m_viewports; // one per monitor
         int m_virtualLeft = 0;
         int m_virtualTop = 0;
+
+        // VS constant buffer (register b1) carrying the per-monitor aspect-fit scale so a
+        // video/gif keeps its aspect ratio instead of stretching to each monitor.
+        ComPtr<ID3D11Buffer> m_scaleCB;
+        // Scissor-enabled rasterizer state so Fill/Center scaling (quad drawn past the
+        // NDC edges) is clipped to each monitor instead of spilling into neighbours.
+        ComPtr<ID3D11RasterizerState> m_scissorRaster;
+        bool CreateScaleBuffer();
+        // Computes the NDC xy scale for the active fit mode given content vs viewport size.
+        void SetFitScale(const D3D11_VIEWPORT& vp, UINT contentW, UINT contentH);
     };
 }
