@@ -84,9 +84,22 @@ namespace DesktopIntegration {
         int screenWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
         int screenHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
 
+        // Place the child so its client origin lands on the *virtual-desktop* origin, which
+        // is what DX11Renderer's per-monitor viewports are measured against. As a child,
+        // (0,0) is the parent's client top-left — and depending on the Windows build that
+        // parent (WorkerW/Progman) sits at either the primary or the virtual origin. Offset
+        // by the parent's screen rect so we're correct either way. For single-monitor and
+        // right/below layouts (virtual origin == primary == 0,0) this is exactly (0,0).
+        int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        RECT parentRc = {};
+        GetWindowRect(target, &parentRc);
+        int posX = vx - parentRc.left;
+        int posY = vy - parentRc.top;
+
         if (g_workerW) {
             // Windows 10: child of the empty WorkerW behind the icons — just fill it.
-            SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, screenWidth, screenHeight,
+            SetWindowPos(hwnd, HWND_BOTTOM, posX, posY, screenWidth, screenHeight,
                          SWP_NOACTIVATE | SWP_SHOWWINDOW);
         } else {
             // Windows 11 fallback: parented to Progman, which itself paints the wallpaper.
@@ -95,10 +108,10 @@ namespace DesktopIntegration {
             HWND defView = FindWindowEx(progman, nullptr, L"SHELLDLL_DefView", nullptr);
             DiagLog("Progman fallback: defView=" + std::to_string((uintptr_t)defView));
             if (defView) {
-                SetWindowPos(hwnd, defView, 0, 0, screenWidth, screenHeight,
+                SetWindowPos(hwnd, defView, posX, posY, screenWidth, screenHeight,
                              SWP_NOACTIVATE | SWP_SHOWWINDOW);
             } else {
-                SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, screenWidth, screenHeight,
+                SetWindowPos(hwnd, HWND_BOTTOM, posX, posY, screenWidth, screenHeight,
                              SWP_NOACTIVATE | SWP_SHOWWINDOW);
             }
         }
