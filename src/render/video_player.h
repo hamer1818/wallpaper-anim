@@ -43,6 +43,15 @@ namespace Render {
 
         ComPtr<IMFSourceReader> m_sourceReader;
 
+        // Zero-copy GPU decode: when the decoder can hand back D3D-backed NV12 samples,
+        // we GPU-copy them straight into an SRV texture instead of the CPU memcpy path.
+        ComPtr<IMFDXGIDeviceManager> m_deviceManager;
+        bool m_gpuMode = false;
+        ComPtr<ID3D11Texture2D> m_nv12Tex; // GPU-mode SRV-capable NV12 copy target
+        // Decoder textures may be padded to alignment; sample only the valid region.
+        float m_texScaleX = 1.0f;
+        float m_texScaleY = 1.0f;
+
         bool m_isPlaying = false;
         UINT32 m_videoWidth = 0;
         UINT32 m_videoHeight = 0;
@@ -71,11 +80,13 @@ namespace Render {
         ComPtr<ID3D11InputLayout> m_inputLayout;
         ComPtr<ID3D11Buffer> m_vertexBuffer;
         ComPtr<ID3D11Buffer> m_colorCB; // holds the YUV-matrix selector for the pixel shader
+        ComPtr<ID3D11Buffer> m_texCB;   // VS b2: texcoord scale to skip decoder padding
         ComPtr<ID3D11SamplerState> m_samplerState;
 
         bool SetupShaders();
         bool SetupQuad();
-        bool CreateVideoTextures(UINT32 width, UINT32 height);
+        bool CreateVideoTexturesCPU(UINT32 width, UINT32 height);
+        bool CreateVideoTexturesGPU(UINT32 texW, UINT32 texH);
     };
 
 }

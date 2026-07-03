@@ -25,10 +25,13 @@ namespace Render {
         cbuffer TransformCB : register(b1) {
             float4 uScale; // xy = per-monitor aspect-fit scale applied in NDC
         };
+        cbuffer TexCB : register(b2) {
+            float4 uTexScale; // xy = valid texcoord range (skips decoder alignment padding)
+        };
         PS_INPUT VSMain(VS_INPUT input) {
             PS_INPUT output;
             output.pos = float4(input.pos.xy * uScale.xy, input.pos.z, 1.0f);
-            output.tex = input.tex;
+            output.tex = input.tex * uTexScale.xy;
             return output;
         }
         Texture2D<float>  texY  : register(t0);
@@ -82,6 +85,7 @@ namespace Render {
         m_srvY.Reset();
         m_texUV.Reset();
         m_srvUV.Reset();
+        m_nv12Tex.Reset();
     }
 
     bool VideoPlayer::Initialize(ID3D11Device* device, ID3D11DeviceContext* context) {
@@ -101,6 +105,16 @@ namespace Render {
         if (!SetupQuad()) {
             OutputDebugStringW(L"[VideoPlayer] SetupQuad failed\n");
             return false;
+        }
+
+        // Try to enable zero-copy GPU decode: wrap our D3D device in an MF device manager.
+        // If any of this fails we simply stay on the CPU upload path (m_deviceManager null).
+        UINT resetToken = 0;
+        ComPtr<IMFDXGIDeviceManager> mgr;
+        if (SUCCEEDED(MFCreateDXGIDeviceManager(&resetToken, &mgr))) {
+            if (SUCCEEDED(mgr->ResetDevice(m_device.Get(), resetToken))) {
+                m_deviceManager = mgr;
+            }
         }
 
         return true;
@@ -153,6 +167,7 @@ namespace Render {
         cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
         if (FAILED(m_device->CreateBuffer(&cbd, nullptr, &m_colorCB))) return false;
+        if (FAILED(m_device->CreateBuffer(&cbd, nullptr, &m_texCB))) return false;
 
         return true;
     }
@@ -177,7 +192,7 @@ namespace Render {
         return SUCCEEDED(m_device->CreateBuffer(&bd, &initData, &m_vertexBuffer));
     }
 
-    bool VideoPlayer::CreateVideoTextures(UINT32 width, UINT32 height) {
+    bool VideoPlayer::CreateVideoTexturesCPU(UINT32 width, UINT32 height) {
         m_texY.Reset();
         m_srvY.Reset();
         m_texUV.Reset();
@@ -208,19 +223,66 @@ namespace Render {
         return true;
     }
 
+    bool VideoPlayer::CreateVideoTexturesGPU(UINT32 texW, UINT32 texH) {
+        m_texY.Reset();  m_srvY.Reset();
+        m_texUV.Reset(); m_srvUV.Reset();
+        m_nv12Tex.Reset();
+
+        // One SRV-capable NV12 texture that the decoder frame is GPU-copied into each
+        // frame; the luma/chroma planes are exposed via typed plane SRVs.
+        D3D11_TEXTURE2D_DESC desc = {};
+        desc.Width = texW;
+        desc.Height = texH;
+        desc.MipLevels = 1;
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_NV12;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        if (FAILED(m_device->CreateTexture2D(&desc, nullptr, &m_nv12Tex))) return false;
+
+        D3D11_SHADER_RESOURCE_VIEW_DESC sy = {};
+        sy.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        sy.Texture2D.MipLevels = 1;
+        sy.Format = DXGI_FORMAT_R8_UNORM;   // plane 0 (Y)
+        if (FAILED(m_device->CreateShaderResourceView(m_nv12Tex.Get(), &sy, &m_srvY))) return false;
+
+        D3D11_SHADER_RESOURCE_VIEW_DESC suv = sy;
+        suv.Format = DXGI_FORMAT_R8G8_UNORM; // plane 1 (interleaved UV)
+        if (FAILED(m_device->CreateShaderResourceView(m_nv12Tex.Get(), &suv, &m_srvUV))) return false;
+
+        return true;
+    }
+
     bool VideoPlayer::LoadMedia(const std::wstring& filePath) {
         // Check if file exists
         DWORD attrib = GetFileAttributesW(filePath.c_str());
         if (attrib == INVALID_FILE_ATTRIBUTES) return false;
 
-        ComPtr<IMFAttributes> attributes;
-        HRESULT hr = MFCreateAttributes(&attributes, 1);
-        if (FAILED(hr)) return false;
+        m_gpuMode = false;
+        m_nv12Tex.Reset();
 
-        attributes->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
-        attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
-
-        hr = MFCreateSourceReaderFromURL(filePath.c_str(), attributes.Get(), &m_sourceReader);
+        // Build the source reader. When we have a device manager, first try wiring it up
+        // so the decoder outputs D3D-backed (zero-copy) samples; if that fails, retry with
+        // the plain CPU pipeline so playback still works.
+        HRESULT hr = E_FAIL;
+        bool wantGPU = (m_deviceManager != nullptr);
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            ComPtr<IMFAttributes> attributes;
+            if (FAILED(MFCreateAttributes(&attributes, 4))) return false;
+            attributes->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
+            if (wantGPU) {
+                attributes->SetUnknown(MF_SOURCE_READER_D3D_MANAGER, m_deviceManager.Get());
+                attributes->SetUINT32(MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, TRUE);
+            } else {
+                attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
+            }
+            m_sourceReader.Reset();
+            hr = MFCreateSourceReaderFromURL(filePath.c_str(), attributes.Get(), &m_sourceReader);
+            if (SUCCEEDED(hr)) break;
+            if (!wantGPU) break; // already tried the CPU path
+            wantGPU = false;     // GPU wiring failed; fall back and retry
+        }
         if (FAILED(hr)) return false;
 
         ComPtr<IMFMediaType> mediaType;
@@ -269,8 +331,6 @@ namespace Render {
             m_isBT709 = (yuvMatrix != MFVideoTransferMatrix_BT601);
         }
 
-        if (!CreateVideoTextures(m_videoWidth, m_videoHeight)) return false;
-
         // Push the matrix selection into the pixel shader's constant buffer.
         D3D11_MAPPED_SUBRESOURCE cbMap;
         if (SUCCEEDED(m_context->Map(m_colorCB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &cbMap))) {
@@ -280,9 +340,9 @@ namespace Render {
             m_context->Unmap(m_colorCB.Get(), 0);
         }
 
-        // Probe-decode one frame. Some codecs (notably VP9/AV1 on stock Windows 10)
-        // let the topology build but fail at actual decode time, which would otherwise
-        // show nothing with no error. Failing here lets the caller report it instead.
+        // Probe-decode one frame. This both validates the codec (some VP9/AV1 streams
+        // build a topology but fail at actual decode time on stock Windows) and tells us
+        // whether the decoder hands back D3D-backed samples (zero-copy) or system memory.
         {
             DWORD probeStream = 0, probeFlags = 0;
             LONGLONG probeTs = 0;
@@ -292,11 +352,43 @@ namespace Render {
                 0, &probeStream, &probeFlags, &probeTs, &probeSample);
             if (FAILED(probeHr)) return false;
 
+            // If the sample is a D3D texture, switch to the zero-copy GPU path.
+            if (wantGPU && probeSample) {
+                ComPtr<IMFMediaBuffer> pbuf;
+                ComPtr<IMFDXGIBuffer> dxgi;
+                if (SUCCEEDED(probeSample->GetBufferByIndex(0, &pbuf)) && SUCCEEDED(pbuf.As(&dxgi))) {
+                    ComPtr<ID3D11Texture2D> dtex;
+                    if (SUCCEEDED(dxgi->GetResource(IID_PPV_ARGS(&dtex)))) {
+                        D3D11_TEXTURE2D_DESC dd = {};
+                        dtex->GetDesc(&dd);
+                        if (dd.Width >= m_videoWidth && dd.Height >= m_videoHeight &&
+                            CreateVideoTexturesGPU(dd.Width, dd.Height)) {
+                            m_gpuMode = true;
+                            m_texScaleX = (float)m_videoWidth / dd.Width;
+                            m_texScaleY = (float)m_videoHeight / dd.Height;
+                        }
+                    }
+                }
+            }
+
             // Rewind so playback still starts from the first frame.
             PROPVARIANT var = {};
             var.vt = VT_I8;
             var.hVal.QuadPart = 0;
             m_sourceReader->SetCurrentPosition(GUID_NULL, var);
+        }
+
+        // Fall back to the CPU upload textures if we didn't end up in GPU mode.
+        if (!m_gpuMode) {
+            if (!CreateVideoTexturesCPU(m_videoWidth, m_videoHeight)) return false;
+            m_texScaleX = m_texScaleY = 1.0f;
+        }
+
+        // Push the texcoord scale (1,1 for CPU textures; <1 to skip decoder padding on GPU).
+        if (SUCCEEDED(m_context->Map(m_texCB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &cbMap))) {
+            float* f = (float*)cbMap.pData;
+            f[0] = m_texScaleX; f[1] = m_texScaleY; f[2] = 0.0f; f[3] = 0.0f;
+            m_context->Unmap(m_texCB.Get(), 0);
         }
 
         m_lastFrameTime = 0;
@@ -309,7 +401,7 @@ namespace Render {
     void VideoPlayer::Stop()  { m_isPlaying = false; }
 
     bool VideoPlayer::UpdateFrame() {
-        if (!m_isPlaying || !m_sourceReader || !m_texY) return false;
+        if (!m_isPlaying || !m_sourceReader || !m_srvY) return false;
 
         LARGE_INTEGER li;
         QueryPerformanceCounter(&li);
@@ -341,6 +433,24 @@ namespace Render {
         }
 
         if (!sample) return false;
+
+        // Zero-copy GPU path: the sample is already an NV12 texture on our device, so we
+        // GPU-copy it into the SRV texture — no CPU mapping or memcpy at all.
+        if (m_gpuMode) {
+            ComPtr<IMFMediaBuffer> gbuf;
+            ComPtr<IMFDXGIBuffer> dxgi;
+            if (SUCCEEDED(sample->GetBufferByIndex(0, &gbuf)) && SUCCEEDED(gbuf.As(&dxgi))) {
+                ComPtr<ID3D11Texture2D> dtex;
+                UINT subIdx = 0;
+                if (SUCCEEDED(dxgi->GetResource(IID_PPV_ARGS(&dtex)))) {
+                    dxgi->GetSubresourceIndex(&subIdx);
+                    m_context->CopySubresourceRegion(m_nv12Tex.Get(), 0, 0, 0, 0, dtex.Get(), subIdx, nullptr);
+                    m_lastFrameTime = currentTime;
+                    return true;
+                }
+            }
+            return false;
+        }
 
         // Prefer a single decoder buffer (usually exposes the real 2D layout); fall back
         // to a contiguous copy for the rare multi-buffer sample.
@@ -420,6 +530,7 @@ namespace Render {
         m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 
         m_context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
+        m_context->VSSetConstantBuffers(2, 1, m_texCB.GetAddressOf()); // texcoord scale (b2)
         m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
         m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
         m_context->PSSetConstantBuffers(0, 1, m_colorCB.GetAddressOf());

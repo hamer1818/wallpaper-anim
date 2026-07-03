@@ -146,12 +146,16 @@ namespace Render {
         sd.Windowed = TRUE;
         sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 
-        UINT createDeviceFlags = 0;
+        UINT baseFlags = 0;
 #ifdef _DEBUG
-        createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
+        baseFlags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
+        // VIDEO_SUPPORT lets Media Foundation hardware-decode straight onto this device
+        // (zero-copy path in VideoPlayer). BGRA_SUPPORT is required alongside it.
+        UINT createDeviceFlags = baseFlags | D3D11_CREATE_DEVICE_VIDEO_SUPPORT | D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 
         D3D_FEATURE_LEVEL featureLevels[] = {
+            D3D_FEATURE_LEVEL_11_1,
             D3D_FEATURE_LEVEL_11_0,
             D3D_FEATURE_LEVEL_10_1,
             D3D_FEATURE_LEVEL_10_0,
@@ -163,7 +167,23 @@ namespace Render {
             featureLevels, numFeatureLevels, D3D11_SDK_VERSION, &sd,
             &m_swapChain, &m_device, nullptr, &m_context);
 
-        return SUCCEEDED(hr);
+        // If a driver rejects the video/BGRA flags, retry with the plain flag set so the
+        // wallpaper still runs (VideoPlayer then falls back to its CPU upload path).
+        if (FAILED(hr)) {
+            hr = D3D11CreateDeviceAndSwapChain(
+                nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, baseFlags,
+                featureLevels, numFeatureLevels, D3D11_SDK_VERSION, &sd,
+                &m_swapChain, &m_device, nullptr, &m_context);
+        }
+        if (FAILED(hr)) return false;
+
+        // MF decodes on its own worker threads using this device, so it must be
+        // multithread-protected. Harmless if video-mode decoding is never used.
+        ComPtr<ID3D10Multithread> mt;
+        if (SUCCEEDED(m_device.As(&mt))) {
+            mt->SetMultithreadProtected(TRUE);
+        }
+        return true;
     }
 
     bool DX11Renderer::CreateRenderTarget() {
