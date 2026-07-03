@@ -242,7 +242,10 @@ namespace winrt::WallpaperAnimWinUI::implementation
                 if (config.pauseOnBattery && SystemMonitor::IsOnBattery()) {
                     shouldAutoPause = true;
                 }
-                if (config.pauseOnFullscreen && SystemMonitor::IsFullscreenAppActive()) {
+                if (config.pauseOnFullscreen &&
+                    (SystemMonitor::IsFullscreenAppActive() || SystemMonitor::IsDesktopCovered())) {
+                    // Fullscreen app OR (single-monitor) a maximized window fully hiding the
+                    // wallpaper — either way it can't be seen, so stop spending CPU on it.
                     shouldAutoPause = true;
                 }
 
@@ -258,10 +261,16 @@ namespace winrt::WallpaperAnimWinUI::implementation
             // stop the wallpaper forever). Resource use is bounded by the sync interval and
             // the fullscreen/battery auto-pause above.
             if (!m_isPaused && !isAutoPaused) {
-                m_renderer.RenderFrame();
-                // Hardware VSync pacing — no Sleep-based limiter, so no judder even on
-                // high-refresh (144 Hz+) monitors.
-                m_renderer.Present(syncInterval);
+                // RenderFrame draws (and returns true) only when the media has a new frame.
+                // Present just that frame, VSync-paced by the hardware (judder-free even on
+                // 144 Hz+ monitors). When there's no new frame we skip the whole
+                // clear/draw/present chain and idle ~1ms, so present rate follows the
+                // media's own fps instead of the monitor refresh rate.
+                if (m_renderer.RenderFrame()) {
+                    m_renderer.Present(syncInterval);
+                } else {
+                    Sleep(1);
+                }
             } else {
                 Sleep(100); // manual/auto pause: idle cheaply
             }

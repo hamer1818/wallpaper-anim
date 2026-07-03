@@ -128,8 +128,16 @@ namespace Render {
         return true;
     }
 
-    void DX11Renderer::RenderFrame() {
-        if (!m_context || !m_renderTargetView) return;
+    bool DX11Renderer::RenderFrame() {
+        if (!m_context || !m_renderTargetView) return false;
+
+        std::lock_guard<std::mutex> lock(m_mediaMutex);
+        if (!m_mediaPlayer) return false;
+
+        // Only do the (relatively expensive) clear + draw when the player actually has a
+        // new frame. If UpdateFrame() reports nothing new, the back buffer already holds
+        // the current frame, so we return false and the loop skips Present entirely.
+        if (!m_mediaPlayer->UpdateFrame()) return false;
 
         // Ensure the render target is bound. In FLIP_DISCARD swap chains, it can become unbound after Present.
         m_context->OMSetRenderTargets(1, m_renderTargetView.GetAddressOf(), nullptr);
@@ -138,19 +146,16 @@ namespace Render {
         float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
         m_context->ClearRenderTargetView(m_renderTargetView.Get(), clearColor);
 
-        std::lock_guard<std::mutex> lock(m_mediaMutex);
-        if (m_mediaPlayer) {
-            // Advance the frame once, then draw it into each monitor's viewport.
-            m_mediaPlayer->UpdateFrame();
-            if (m_viewports.empty()) {
+        // Draw the frame into each monitor's viewport.
+        if (m_viewports.empty()) {
+            m_mediaPlayer->Render();
+        } else {
+            for (const auto& vp : m_viewports) {
+                m_context->RSSetViewports(1, &vp);
                 m_mediaPlayer->Render();
-            } else {
-                for (const auto& vp : m_viewports) {
-                    m_context->RSSetViewports(1, &vp);
-                    m_mediaPlayer->Render();
-                }
             }
         }
+        return true;
     }
 
     HRESULT DX11Renderer::Present(UINT syncInterval) {

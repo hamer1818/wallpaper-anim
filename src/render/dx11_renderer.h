@@ -19,7 +19,12 @@ namespace Render {
         bool Initialize(HWND hwnd);
         void Cleanup();
 
-        void RenderFrame();
+        // Advances and draws the active media only if it has a new frame to show.
+        // Returns true when it drew something (caller should Present), false when there
+        // was nothing new (caller should skip Present and idle briefly). This decouples
+        // present rate from the monitor refresh so a 30fps video doesn't redraw/present
+        // 144 times/sec on a high-refresh monitor.
+        bool RenderFrame();
         // Presents the current frame. syncInterval is the number of vblanks to wait
         // (1 = every refresh = smoothest at monitor Hz; 2 = half rate; etc.). Pacing is
         // done by the hardware here, which is judder-free unlike a Sleep-based limiter.

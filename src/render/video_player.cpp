@@ -10,6 +10,9 @@
 namespace Render {
 
     // ---- Embedded shaders (no external .hlsl file needed) ----
+    // The pixel shader samples the NV12 luma (Y) and chroma (UV) planes and converts
+    // YUV->RGB on the GPU, so the CPU never runs a color-conversion MFT or touches RGB
+    // pixels. isBT709 picks the HD vs SD coefficient set.
     static const char* g_shaderSource = R"(
         struct VS_INPUT {
             float3 pos : POSITION;
@@ -25,10 +28,32 @@ namespace Render {
             output.tex = input.tex;
             return output;
         }
-        Texture2D tex0 : register(t0);
+        Texture2D<float>  texY  : register(t0);
+        Texture2D<float2> texUV : register(t1);
         SamplerState sam0 : register(s0);
+        cbuffer ColorCB : register(b0) {
+            float isBT709;
+            float3 _pad;
+        };
         float4 PSMain(PS_INPUT input) : SV_TARGET {
-            return tex0.Sample(sam0, input.tex);
+            // NV12 is studio/limited range (Y in 16..235, UV in 16..240, /255).
+            float y = (texY.Sample(sam0, input.tex) - 0.0625) * 1.164383;
+            float2 uv = texUV.Sample(sam0, input.tex) - float2(0.5, 0.5);
+            float u = uv.x;
+            float v = uv.y;
+            float3 rgb;
+            if (isBT709 > 0.5) {
+                rgb = float3(
+                    y + 1.792741 * v,
+                    y - 0.213249 * u - 0.532909 * v,
+                    y + 2.112402 * u);
+            } else {
+                rgb = float3(
+                    y + 1.596027 * v,
+                    y - 0.391762 * u - 0.812968 * v,
+                    y + 2.017232 * u);
+            }
+            return float4(saturate(rgb), 1.0);
         }
     )";
 
@@ -50,8 +75,10 @@ namespace Render {
 
     void VideoPlayer::Cleanup() {
         m_sourceReader.Reset();
-        m_frameTexture.Reset();
-        m_frameSRV.Reset();
+        m_texY.Reset();
+        m_srvY.Reset();
+        m_texUV.Reset();
+        m_srvUV.Reset();
     }
 
     bool VideoPlayer::Initialize(ID3D11Device* device, ID3D11DeviceContext* context) {
@@ -115,6 +142,15 @@ namespace Render {
         sampDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
         m_device->CreateSamplerState(&sampDesc, &m_samplerState);
 
+        // Constant buffer carrying the YUV-matrix selector (16-byte aligned).
+        struct ColorCB { float isBT709; float pad[3]; };
+        D3D11_BUFFER_DESC cbd = {};
+        cbd.Usage = D3D11_USAGE_DYNAMIC;
+        cbd.ByteWidth = sizeof(ColorCB);
+        cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(m_device->CreateBuffer(&cbd, nullptr, &m_colorCB))) return false;
+
         return true;
     }
 
@@ -138,26 +174,35 @@ namespace Render {
         return SUCCEEDED(m_device->CreateBuffer(&bd, &initData, &m_vertexBuffer));
     }
 
-    bool VideoPlayer::CreateFrameTexture(UINT32 width, UINT32 height) {
-        m_frameTexture.Reset();
-        m_frameSRV.Reset();
+    bool VideoPlayer::CreateVideoTextures(UINT32 width, UINT32 height) {
+        m_texY.Reset();
+        m_srvY.Reset();
+        m_texUV.Reset();
+        m_srvUV.Reset();
 
-        D3D11_TEXTURE2D_DESC desc = {};
-        desc.Width = width;
-        desc.Height = height;
-        desc.MipLevels = 1;
-        desc.ArraySize = 1;
-        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;  // Matches MFVideoFormat_RGB32
-        desc.SampleDesc.Count = 1;
-        desc.Usage = D3D11_USAGE_DYNAMIC;
-        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        // Luma plane: full resolution, one 8-bit sample per pixel.
+        D3D11_TEXTURE2D_DESC yd = {};
+        yd.Width = width;
+        yd.Height = height;
+        yd.MipLevels = 1;
+        yd.ArraySize = 1;
+        yd.Format = DXGI_FORMAT_R8_UNORM;
+        yd.SampleDesc.Count = 1;
+        yd.Usage = D3D11_USAGE_DYNAMIC;
+        yd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        yd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(m_device->CreateTexture2D(&yd, nullptr, &m_texY))) return false;
+        if (FAILED(m_device->CreateShaderResourceView(m_texY.Get(), nullptr, &m_srvY))) return false;
 
-        HRESULT hr = m_device->CreateTexture2D(&desc, nullptr, &m_frameTexture);
-        if (FAILED(hr)) return false;
+        // Chroma plane: half resolution, interleaved U/V (2 bytes per texel).
+        D3D11_TEXTURE2D_DESC uvd = yd;
+        uvd.Width = (width + 1) / 2;
+        uvd.Height = (height + 1) / 2;
+        uvd.Format = DXGI_FORMAT_R8G8_UNORM;
+        if (FAILED(m_device->CreateTexture2D(&uvd, nullptr, &m_texUV))) return false;
+        if (FAILED(m_device->CreateShaderResourceView(m_texUV.Get(), nullptr, &m_srvUV))) return false;
 
-        hr = m_device->CreateShaderResourceView(m_frameTexture.Get(), nullptr, &m_frameSRV);
-        return SUCCEEDED(hr);
+        return true;
     }
 
     bool VideoPlayer::LoadMedia(const std::wstring& filePath) {
@@ -180,7 +225,10 @@ namespace Render {
         if (FAILED(hr)) return false;
 
         mediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-        mediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+        // Request NV12: the native output of H.264 hardware decoders, so MF can decode
+        // on the GPU and skip the CPU-side YUV->RGB conversion MFT. We convert to RGB in
+        // the pixel shader instead.
+        mediaType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
 
         hr = m_sourceReader->SetCurrentMediaType(
             (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, mediaType.Get());
@@ -194,6 +242,15 @@ namespace Render {
         hr = MFGetAttributeSize(outputType.Get(), MF_MT_FRAME_SIZE, &m_videoWidth, &m_videoHeight);
         if (FAILED(hr)) return false;
 
+        // The decoder may pad each row to an alignment boundary; honor the real stride so
+        // rows don't skew. Falls back to the packed (== width) stride if unspecified.
+        INT32 declaredStride = 0;
+        if (SUCCEEDED(outputType->GetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32*)&declaredStride)) && declaredStride != 0) {
+            m_srcStride = (UINT32)abs(declaredStride);
+        } else {
+            m_srcStride = m_videoWidth;
+        }
+
         UINT32 num = 0, den = 1;
         if (SUCCEEDED(MFGetAttributeRatio(outputType.Get(), MF_MT_FRAME_RATE, &num, &den)) && num > 0 && den > 0) {
             m_fps = (float)num / den;
@@ -201,7 +258,24 @@ namespace Render {
             m_fps = 30.0f;
         }
 
-        if (!CreateFrameTexture(m_videoWidth, m_videoHeight)) return false;
+        // Pick the YUV->RGB matrix: prefer the stream's declared value, else fall back to
+        // the usual convention (BT.709 for HD, BT.601 for SD).
+        m_isBT709 = (m_videoHeight > 576);
+        UINT32 yuvMatrix = 0;
+        if (SUCCEEDED(outputType->GetUINT32(MF_MT_YUV_MATRIX, &yuvMatrix))) {
+            m_isBT709 = (yuvMatrix != MFVideoTransferMatrix_BT601);
+        }
+
+        if (!CreateVideoTextures(m_videoWidth, m_videoHeight)) return false;
+
+        // Push the matrix selection into the pixel shader's constant buffer.
+        D3D11_MAPPED_SUBRESOURCE cbMap;
+        if (SUCCEEDED(m_context->Map(m_colorCB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &cbMap))) {
+            float* f = (float*)cbMap.pData;
+            f[0] = m_isBT709 ? 1.0f : 0.0f;
+            f[1] = f[2] = f[3] = 0.0f;
+            m_context->Unmap(m_colorCB.Get(), 0);
+        }
 
         // Probe-decode one frame. Some codecs (notably VP9/AV1 on stock Windows 10)
         // let the topology build but fail at actual decode time, which would otherwise
@@ -232,7 +306,7 @@ namespace Render {
     void VideoPlayer::Stop()  { m_isPlaying = false; }
 
     bool VideoPlayer::UpdateFrame() {
-        if (!m_isPlaying || !m_sourceReader || !m_frameTexture) return false;
+        if (!m_isPlaying || !m_sourceReader || !m_texY) return false;
 
         LARGE_INTEGER li;
         QueryPerformanceCounter(&li);
@@ -265,38 +339,76 @@ namespace Render {
 
         if (!sample) return false;
 
+        // Prefer a single decoder buffer (usually exposes the real 2D layout); fall back
+        // to a contiguous copy for the rare multi-buffer sample.
         ComPtr<IMFMediaBuffer> buffer;
-        hr = sample->ConvertToContiguousBuffer(&buffer);
-        if (FAILED(hr)) return false;
+        DWORD bufCount = 0;
+        if (SUCCEEDED(sample->GetBufferCount(&bufCount)) && bufCount == 1) {
+            hr = sample->GetBufferByIndex(0, &buffer);
+        } else {
+            hr = sample->ConvertToContiguousBuffer(&buffer);
+        }
+        if (FAILED(hr) || !buffer) return false;
 
-        BYTE* srcData = nullptr;
-        DWORD srcLength = 0;
-        hr = buffer->Lock(&srcData, nullptr, &srcLength);
-        if (FAILED(hr)) return false;
+        // Resolve the real NV12 layout. Decoders often pad the luma plane's *height* to an
+        // alignment boundary (e.g. 1080->1088), so the chroma plane does not start at
+        // stride*videoHeight. Reading the actual pitch + buffer length via IMF2DBuffer
+        // lets us locate the chroma plane exactly instead of guessing (a wrong offset
+        // shows up as a green band where chroma reads zero).
+        BYTE* srcData = nullptr;      // first luma scanline
+        UINT  srcStride = m_srcStride; // real luma/chroma row pitch
+        UINT  lumaRows = m_videoHeight; // rows from luma start to chroma start
+        bool  used2D = false;
 
-        // Copy pixel data into D3D11 dynamic texture
-        D3D11_MAPPED_SUBRESOURCE mapped;
-        hr = m_context->Map(m_frameTexture.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-        if (SUCCEEDED(hr)) {
-            UINT srcStride = m_videoWidth * 4;
-            BYTE* dst = (BYTE*)mapped.pData;
-
-            // Copy row by row (strides might differ between MF buffer and D3D11 texture)
-            for (UINT row = 0; row < m_videoHeight; row++) {
-                BYTE* srcRow = srcData + row * srcStride;
-                memcpy(dst + row * mapped.RowPitch, srcRow, srcStride);
+        ComPtr<IMF2DBuffer2> buf2d;
+        if (SUCCEEDED(buffer.As(&buf2d))) {
+            BYTE* scan0 = nullptr; LONG pitch = 0; BYTE* bufStart = nullptr; DWORD bufLen = 0;
+            if (SUCCEEDED(buf2d->Lock2DSize(MF2DBuffer_LockFlags_Read, &scan0, &pitch, &bufStart, &bufLen)) && pitch > 0) {
+                srcData = scan0;
+                srcStride = (UINT)pitch;
+                // Total buffer holds luma + half-height chroma at the same pitch:
+                // bufLen = pitch * lumaRows * 3/2  ->  lumaRows = (bufLen / pitch) * 2/3.
+                lumaRows = (bufLen / srcStride) * 2 / 3;
+                used2D = true;
             }
+        }
+        if (!used2D) {
+            // Fallback: plain locked buffer, assume packed layout after the luma plane.
+            if (FAILED(buffer->Lock(&srcData, nullptr, nullptr))) return false;
+        }
 
-            m_context->Unmap(m_frameTexture.Get(), 0);
+        const UINT copyBytes = m_videoWidth; // valid bytes per row (same for Y and UV planes)
+        const UINT chromaHeight = (m_videoHeight + 1) / 2;
+
+        // Upload luma plane -> R8 texture.
+        D3D11_MAPPED_SUBRESOURCE mappedY;
+        if (SUCCEEDED(m_context->Map(m_texY.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedY))) {
+            BYTE* dst = (BYTE*)mappedY.pData;
+            for (UINT row = 0; row < m_videoHeight; row++) {
+                memcpy(dst + row * mappedY.RowPitch, srcData + (size_t)row * srcStride, copyBytes);
+            }
+            m_context->Unmap(m_texY.Get(), 0);
+        }
+
+        // Upload interleaved chroma plane -> R8G8 texture (starts after the luma plane).
+        BYTE* srcUV = srcData + (size_t)srcStride * lumaRows;
+        D3D11_MAPPED_SUBRESOURCE mappedUV;
+        if (SUCCEEDED(m_context->Map(m_texUV.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedUV))) {
+            BYTE* dst = (BYTE*)mappedUV.pData;
+            for (UINT row = 0; row < chromaHeight; row++) {
+                memcpy(dst + row * mappedUV.RowPitch, srcUV + (size_t)row * srcStride, copyBytes);
+            }
+            m_context->Unmap(m_texUV.Get(), 0);
         }
 
         m_lastFrameTime = currentTime; // Update timer ONLY if we successfully processed a frame
-        buffer->Unlock();
+        if (used2D) buf2d->Unlock2D();
+        else buffer->Unlock();
         return true;
     }
 
     void VideoPlayer::Render() {
-        if (!m_frameSRV || !m_vertexShader) return;
+        if (!m_srvY || !m_srvUV || !m_vertexShader) return;
 
         UINT stride = sizeof(Vertex);
         UINT offset = 0;
@@ -307,7 +419,10 @@ namespace Render {
         m_context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
         m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
         m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-        m_context->PSSetShaderResources(0, 1, m_frameSRV.GetAddressOf());
+        m_context->PSSetConstantBuffers(0, 1, m_colorCB.GetAddressOf());
+
+        ID3D11ShaderResourceView* srvs[2] = { m_srvY.Get(), m_srvUV.Get() };
+        m_context->PSSetShaderResources(0, 2, srvs);
 
         m_context->Draw(4, 0);
     }

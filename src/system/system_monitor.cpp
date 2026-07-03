@@ -63,4 +63,49 @@ namespace SystemMonitor {
 
         return false;
     }
+
+    bool IsDesktopCovered() {
+        // Only meaningful with a single monitor: with more than one screen, a maximized
+        // window on one still leaves the wallpaper visible on the others, so pausing the
+        // (single, shared) wallpaper would freeze those visible screens.
+        if (GetSystemMetrics(SM_CMONITORS) != 1) return false;
+
+        HWND foregroundWin = GetForegroundWindow();
+        if (!foregroundWin) return false;
+
+        // Ignore the desktop/shell (and the WorkerW/Progman windows that briefly take
+        // foreground when clicking desktop icons) — those don't hide the wallpaper.
+        HWND desktopWin = GetDesktopWindow();
+        HWND shellWin = GetShellWindow();
+        if (foregroundWin == desktopWin || foregroundWin == shellWin) return false;
+
+        char className[256];
+        if (GetClassNameA(foregroundWin, className, sizeof(className))) {
+            if (strcmp(className, "WorkerW") == 0 || strcmp(className, "Progman") == 0) {
+                return false;
+            }
+        }
+
+        // A maximized, visible foreground window covers the whole work area; the only
+        // still-visible strip is the (opaque) taskbar — never the wallpaper. That's
+        // exactly when decoding the wallpaper is wasted work.
+        DWORD style = GetWindowLong(foregroundWin, GWL_STYLE);
+        if ((style & WS_VISIBLE) == 0) return false;
+        if (style & WS_MAXIMIZE) return true;
+
+        // Borderless windows that aren't flagged maximized but still cover the whole
+        // monitor (e.g. some fullscreen media/games) — handled by IsFullscreenAppActive,
+        // but catch them here too for completeness.
+        RECT rc;
+        if (!GetWindowRect(foregroundWin, &rc)) return false;
+        HMONITOR hMonitor = MonitorFromWindow(foregroundWin, MONITOR_DEFAULTTOPRIMARY);
+        MONITORINFO mi = { sizeof(mi) };
+        if (!GetMonitorInfo(hMonitor, &mi)) return false;
+        if (rc.left <= mi.rcMonitor.left && rc.top <= mi.rcMonitor.top &&
+            rc.right >= mi.rcMonitor.right && rc.bottom >= mi.rcMonitor.bottom) {
+            return true;
+        }
+
+        return false;
+    }
 }
