@@ -36,5 +36,7 @@ app.zip
 convert.py
 IMPLEMENTATION_PLAN.md
 winui_samples/
+old_imgui_project/       # superseded pre-WinUI codebase, kept locally only
+third_party/imgui/       # unused since the WinUI migration
 debug.log
 debug2.log

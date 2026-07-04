@@ -11,9 +11,11 @@ A lightweight animated wallpaper engine for Windows 10 and 11. Play MP4 videos, 
 - **Video, GIF & shader wallpapers** — `.mp4`, `.avi`, `.mkv`, `.gif`, and Shadertoy‑style `.hlsl` pixel shaders, rendered on the GPU behind your desktop icons.
 - **YouTube integration** — paste a link and it downloads the best **H.264** stream that fits your screen (up to 1080p, 60 fps when the source offers it), so it plays on every Windows version without extra codecs.
 - **Thumbnail library** — every wallpaper you add is remembered with a generated thumbnail; one click to switch, one click to remove.
-- **Smooth playback** — frames are paced by the monitor's refresh rate via hardware VSync (no judder, even on 144 Hz+). Choose **Maximum (monitor Hz)**, 60, or 30 FPS.
+- **Playlists & auto‑rotation** — group wallpapers into named playlists and cycle through the active one on a timer (5–60 min, optional shuffle); leave no playlist selected to rotate the whole library.
+- **Fit modes** — per‑monitor **Fill** (crop), **Fit** (letterbox), **Stretch**, or **Center**, so any aspect ratio looks right without distortion.
+- **Low resource use** — zero‑copy GPU video decode (NV12 kept on the GPU, YUV→RGB in a shader) and present‑on‑new‑frame pacing keep CPU near idle; frames stay VSync‑paced (no judder, even on 144 Hz+). Choose **Maximum (monitor Hz)**, 60, or 30 FPS.
 - **Multi‑monitor** — the wallpaper spans every screen, drawn full‑size per monitor.
-- **Smart auto‑pause** — automatically stops rendering when a fullscreen app/game is running or the device is on battery, to save CPU/GPU.
+- **Smart auto‑pause** — stops rendering when the wallpaper can't be seen anyway: a fullscreen app/game, a maximized window covering the desktop (single‑monitor), or the device on battery.
 - **Auto‑update** — checks GitHub Releases, verifies the download (HTTPS + SHA‑256), and updates in place.
 - **Modern UI** — a clean WinUI 3 settings window, with Turkish and English localization.
 - **System tray** — play/pause, open settings, and quit from the tray.

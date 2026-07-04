@@ -13,7 +13,7 @@ namespace Utils {
 
     // Lightweight video preview player for library hover previews.
     // Plays the first ~5 seconds of a video in a loop at low FPS,
-    // rendering frames into a D3D11 texture suitable for ImGui::Image().
+    // rendering frames into a D3D11 shader-resource texture the UI can sample.
     class PreviewPlayer {
     public:
         PreviewPlayer();
@@ -32,7 +32,7 @@ namespace Utils {
         // Returns true if the texture was updated.
         bool Update();
 
-        // Get the current frame texture for ImGui::Image()
+        // Get the current frame texture (shader resource view) for the UI to render.
         ID3D11ShaderResourceView* GetFrameSRV() const { return m_frameSRV.Get(); }
 
         // Is currently playing a preview?
