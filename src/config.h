@@ -16,6 +16,12 @@ namespace Config {
         int type; // 0=Video, 1=GIF, 2=Shader, 3=YouTube
     };
 
+    // A named collection of wallpapers (by path) used for scoped auto-rotation.
+    struct Playlist {
+        std::wstring name;
+        std::vector<std::wstring> paths;
+    };
+
     struct AppConfig {
         int configVersion = kCurrentConfigVersion;
         std::wstring lastVideoPath;
@@ -30,6 +36,10 @@ namespace Config {
         bool playlistEnabled = false;
         int playlistIntervalMin = 30; // minutes between switches
         bool playlistShuffle = false;
+        // Named playlists and the currently selected one (empty = whole library).
+        // When set, auto-rotation cycles only through that playlist's items.
+        std::vector<Playlist> playlists;
+        std::wstring activePlaylist;
         bool isFirstRun = true;
         bool hideMinimizeWarning = false;
         int64_t lastUpdateCheck = 0;

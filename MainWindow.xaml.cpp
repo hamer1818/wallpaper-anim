@@ -219,11 +219,20 @@ namespace winrt::WallpaperAnimWinUI::implementation
         TxtPlaylistDesc().Text(winrt::to_hstring(strings.playlistDesc));
         TglShuffle().Header(box_value(winrt::to_hstring(strings.playlistShuffle)));
         TxtPlaylistIntervalLabel().Text(winrt::to_hstring(strings.playlistIntervalLabel));
+        TxtPlaylistsHeader().Text(winrt::to_hstring(strings.playlistsHeader));
+        TxtActivePlaylistLabel().Text(winrt::to_hstring(strings.activePlaylistLabel));
+        TxtNewPlaylistName().PlaceholderText(winrt::to_hstring(strings.newPlaylistPlaceholder));
+        BtnCreatePlaylist().Content(box_value(winrt::to_hstring(strings.createBtn)));
+        BtnDeletePlaylist().Content(box_value(winrt::to_hstring(strings.deleteBtn)));
+        TxtPlaylistHint().Text(winrt::to_hstring(strings.playlistHint));
         TxtLanguageLabel().Text(winrt::to_hstring(strings.languageLabel));
 
         // Update UI
         TxtUpdateHeader().Text(winrt::to_hstring(strings.checkUpdate));
         BtnUpdate().Content(box_value(winrt::to_hstring(strings.checkUpdate)));
+
+        // Repopulate the playlist selector (its "Whole Library" entry is localized).
+        RefreshPlaylistUI();
     }
 
     void MainWindow::RefreshLibrary()
@@ -278,20 +287,48 @@ namespace winrt::WallpaperAnimWinUI::implementation
             tb.VerticalAlignment(winrt::Microsoft::UI::Xaml::VerticalAlignment::Center);
             winrt::Microsoft::UI::Xaml::Controls::Grid::SetColumn(tb, 0);
 
+            // Buttons live in a horizontal strip in the auto-width column.
+            auto btnStrip = winrt::Microsoft::UI::Xaml::Controls::StackPanel();
+            btnStrip.Orientation(winrt::Microsoft::UI::Xaml::Controls::Orientation::Horizontal);
+            winrt::Microsoft::UI::Xaml::Controls::Grid::SetColumn(btnStrip, 1);
+
+            // "Add to / remove from the active playlist" toggle — only shown when a
+            // playlist is selected. A check mark means the item is already in it.
+            bool inPlaylist = false;
+            if (!config.activePlaylist.empty()) {
+                for (const auto& pl : config.playlists) {
+                    if (pl.name == config.activePlaylist) {
+                        inPlaylist = std::find(pl.paths.begin(), pl.paths.end(), item.path) != pl.paths.end();
+                        break;
+                    }
+                }
+                auto plBtn = winrt::Microsoft::UI::Xaml::Controls::Button();
+                plBtn.Background(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(winrt::Microsoft::UI::Colors::Transparent()));
+                plBtn.BorderThickness({0,0,0,0});
+                plBtn.Padding({4,4,4,4});
+                plBtn.Tag(box_value(winrt::hstring(item.path)));
+                plBtn.Click({this, &MainWindow::BtnTogglePlaylistItem_Click});
+                auto plSym = winrt::Microsoft::UI::Xaml::Controls::SymbolIcon();
+                plSym.Symbol(inPlaylist ? winrt::Microsoft::UI::Xaml::Controls::Symbol::Accept
+                                        : winrt::Microsoft::UI::Xaml::Controls::Symbol::Add);
+                plBtn.Content(plSym);
+                btnStrip.Children().Append(plBtn);
+            }
+
             auto btn = winrt::Microsoft::UI::Xaml::Controls::Button();
             btn.Background(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(winrt::Microsoft::UI::Colors::Transparent()));
             btn.BorderThickness({0,0,0,0});
             btn.Padding({4,4,4,4});
             btn.Tag(box_value(winrt::hstring(item.path)));
             btn.Click({this, &MainWindow::BtnDeleteWallpaper_Click});
-            winrt::Microsoft::UI::Xaml::Controls::Grid::SetColumn(btn, 1);
 
             auto sym = winrt::Microsoft::UI::Xaml::Controls::SymbolIcon();
             sym.Symbol(winrt::Microsoft::UI::Xaml::Controls::Symbol::Delete);
             btn.Content(sym);
+            btnStrip.Children().Append(btn);
 
             lowerGrid.Children().Append(tb);
-            lowerGrid.Children().Append(btn);
+            lowerGrid.Children().Append(btnStrip);
 
             rootGrid.Children().Append(img);
             rootGrid.Children().Append(lowerGrid);
@@ -604,6 +641,103 @@ namespace winrt::WallpaperAnimWinUI::implementation
         }
         config.playlistIntervalMin = minutes;
         Config::ConfigManager::GetInstance().Save();
+    }
+
+    // Rebuilds the active-playlist ComboBox from config ("Whole Library" + each playlist)
+    // and reselects the active one. Guarded so it doesn't trigger the selection handler.
+    void MainWindow::RefreshPlaylistUI()
+    {
+        auto& config = Config::ConfigManager::GetInstance().GetConfig();
+        auto& strings = Localization::Get();
+
+        m_suppressPlaylistEvents = true;
+        CmbActivePlaylist().Items().Clear();
+        {
+            auto ci = winrt::Microsoft::UI::Xaml::Controls::ComboBoxItem();
+            ci.Content(box_value(winrt::to_hstring(strings.allLibraryItem)));
+            CmbActivePlaylist().Items().Append(ci);
+        }
+        int selectedIdx = 0;
+        for (size_t i = 0; i < config.playlists.size(); ++i) {
+            auto ci = winrt::Microsoft::UI::Xaml::Controls::ComboBoxItem();
+            ci.Content(box_value(winrt::hstring(config.playlists[i].name)));
+            CmbActivePlaylist().Items().Append(ci);
+            if (config.playlists[i].name == config.activePlaylist) selectedIdx = (int)(i + 1);
+        }
+        CmbActivePlaylist().SelectedIndex(selectedIdx);
+        m_suppressPlaylistEvents = false;
+    }
+
+    void MainWindow::CmbActivePlaylist_SelectionChanged(IInspectable const&, SelectionChangedEventArgs const&)
+    {
+        if (m_suppressPlaylistEvents) return;
+        auto& config = Config::ConfigManager::GetInstance().GetConfig();
+        int idx = CmbActivePlaylist().SelectedIndex();
+        if (idx <= 0) {
+            config.activePlaylist = L"";
+        } else if (idx - 1 < (int)config.playlists.size()) {
+            config.activePlaylist = config.playlists[idx - 1].name;
+        }
+        Config::ConfigManager::GetInstance().Save();
+        RefreshLibrary(); // library cards' +/✓ buttons reflect the newly-selected list
+    }
+
+    void MainWindow::BtnCreatePlaylist_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        std::wstring name = TxtNewPlaylistName().Text().c_str();
+        // Trim surrounding whitespace.
+        size_t b = name.find_first_not_of(L" \t\r\n");
+        size_t e = name.find_last_not_of(L" \t\r\n");
+        name = (b == std::wstring::npos) ? L"" : name.substr(b, e - b + 1);
+        if (name.empty()) return;
+
+        auto& config = Config::ConfigManager::GetInstance().GetConfig();
+        bool exists = false;
+        for (const auto& pl : config.playlists) if (pl.name == name) { exists = true; break; }
+        if (!exists) {
+            Config::Playlist p;
+            p.name = name;
+            config.playlists.push_back(p);
+        }
+        config.activePlaylist = name; // select it so the user can start adding items
+        Config::ConfigManager::GetInstance().Save();
+
+        TxtNewPlaylistName().Text(L"");
+        RefreshPlaylistUI();
+        RefreshLibrary();
+    }
+
+    void MainWindow::BtnDeletePlaylist_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        auto& config = Config::ConfigManager::GetInstance().GetConfig();
+        if (config.activePlaylist.empty()) return; // "Whole Library" isn't deletable
+        config.playlists.erase(
+            std::remove_if(config.playlists.begin(), config.playlists.end(),
+                [&](const Config::Playlist& p) { return p.name == config.activePlaylist; }),
+            config.playlists.end());
+        config.activePlaylist = L"";
+        Config::ConfigManager::GetInstance().Save();
+        RefreshPlaylistUI();
+        RefreshLibrary();
+    }
+
+    void MainWindow::BtnTogglePlaylistItem_Click(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        auto button = sender.as<Button>();
+        std::wstring path = winrt::unbox_value<hstring>(button.Tag()).c_str();
+
+        auto& config = Config::ConfigManager::GetInstance().GetConfig();
+        if (config.activePlaylist.empty()) return;
+        for (auto& pl : config.playlists) {
+            if (pl.name == config.activePlaylist) {
+                auto it = std::find(pl.paths.begin(), pl.paths.end(), path);
+                if (it != pl.paths.end()) pl.paths.erase(it); // toggle off
+                else pl.paths.push_back(path);                 // toggle on
+                break;
+            }
+        }
+        Config::ConfigManager::GetInstance().Save();
+        RefreshLibrary(); // flip this card's +/✓ icon
     }
 
     void MainWindow::BtnUpdate_Click(IInspectable const&, RoutedEventArgs const&)

@@ -27,17 +27,23 @@ namespace winrt::WallpaperAnimWinUI::implementation
         void TglPlaylist_Toggled(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         void TglShuffle_Toggled(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         void CmbPlaylistInterval_SelectionChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const& e);
+        void CmbActivePlaylist_SelectionChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const& e);
+        void BtnCreatePlaylist_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
+        void BtnDeletePlaylist_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
+        void BtnTogglePlaylistItem_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         void BtnUpdate_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         void OnAppWindowClosing(winrt::Microsoft::UI::Windowing::AppWindow const& sender, winrt::Microsoft::UI::Windowing::AppWindowClosingEventArgs const& args);
         winrt::fire_and_forget ShowMinimizeWarningDialog();
 
     private:
         void RefreshLibrary();
+        void RefreshPlaylistUI();
         void LoadLocalization();
         HWND GetWindowHandle();
-        
+
         std::atomic<bool> m_isUpdating{ false };
         std::atomic<bool> m_isDownloading{ false };
+        bool m_suppressPlaylistEvents{ false }; // guards programmatic ComboBox updates
     };
 }
 namespace winrt::WallpaperAnimWinUI::factory_implementation

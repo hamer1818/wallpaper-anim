@@ -193,6 +193,23 @@ namespace winrt::WallpaperAnimWinUI::implementation
         return ok;
     }
 
+    // The set of wallpaper paths auto-rotation cycles through: the selected playlist's
+    // items when one is active, otherwise the whole library.
+    static std::vector<std::wstring> GetRotationPaths(const Config::AppConfig& config)
+    {
+        if (!config.activePlaylist.empty()) {
+            for (const auto& pl : config.playlists) {
+                if (pl.name == config.activePlaylist) {
+                    return pl.paths;
+                }
+            }
+        }
+        std::vector<std::wstring> paths;
+        paths.reserve(config.history.size());
+        for (const auto& h : config.history) paths.push_back(h.path);
+        return paths;
+    }
+
     // Current primary-monitor refresh rate (Hz), falling back to 60 if unknown.
     static int GetPrimaryRefreshRate()
     {
@@ -259,7 +276,7 @@ namespace winrt::WallpaperAnimWinUI::implementation
                 // Playlist auto-rotation: when enabled and there's more than one item,
                 // advance to the next library entry every playlistIntervalMin minutes.
                 // The switch itself is done on the window thread via a posted message.
-                if (config.playlistEnabled && config.history.size() >= 2) {
+                if (config.playlistEnabled && GetRotationPaths(config).size() >= 2) {
                     int intervalMin = config.playlistIntervalMin > 0 ? config.playlistIntervalMin : 30;
                     double sinceSwitch = (double)(frameStart.QuadPart - lastSwitchTime.QuadPart) / freq.QuadPart;
                     if (sinceSwitch >= intervalMin * 60.0) {
@@ -340,23 +357,24 @@ namespace winrt::WallpaperAnimWinUI::implementation
 
         case WM_APP_PLAYLIST_NEXT: {
             auto& config = Config::ConfigManager::GetInstance().GetConfig();
-            if (config.history.size() < 2) return 0;
+            std::vector<std::wstring> paths = GetRotationPaths(config);
+            if (paths.size() < 2) return 0;
 
-            // Find where the current wallpaper sits in the library, then pick the next one
-            // (random when shuffle is on, otherwise the following entry, wrapping around).
+            // Find where the current wallpaper sits in the active list, then pick the next
+            // one (random when shuffle is on, otherwise the following entry, wrapping).
             size_t current = 0;
-            for (size_t i = 0; i < config.history.size(); ++i) {
-                if (config.history[i].path == config.lastVideoPath) { current = i; break; }
+            for (size_t i = 0; i < paths.size(); ++i) {
+                if (paths[i] == config.lastVideoPath) { current = i; break; }
             }
             size_t next;
             if (config.playlistShuffle) {
-                do { next = (size_t)rand() % config.history.size(); }
-                while (next == current && config.history.size() > 1);
+                do { next = (size_t)rand() % paths.size(); }
+                while (next == current && paths.size() > 1);
             } else {
-                next = (current + 1) % config.history.size();
+                next = (current + 1) % paths.size();
             }
 
-            const std::wstring nextPath = config.history[next].path;
+            const std::wstring nextPath = paths[next];
             if (LoadMedia(nextPath)) {
                 config.lastVideoPath = nextPath;
                 Config::ConfigManager::GetInstance().Save();

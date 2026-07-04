@@ -60,6 +60,19 @@ namespace Config {
                 m_config.playlistEnabled = j.value("playlistEnabled", false);
                 m_config.playlistIntervalMin = j.value("playlistIntervalMin", 30);
                 m_config.playlistShuffle = j.value("playlistShuffle", false);
+                m_config.activePlaylist = s2ws(j.value("activePlaylist", ""));
+                if (j.contains("playlists") && j["playlists"].is_array()) {
+                    for (auto& pl : j["playlists"]) {
+                        Playlist p;
+                        p.name = s2ws(pl.value("name", ""));
+                        if (pl.contains("paths") && pl["paths"].is_array()) {
+                            for (auto& pp2 : pl["paths"]) {
+                                p.paths.push_back(s2ws(pp2.get<std::string>()));
+                            }
+                        }
+                        if (!p.name.empty()) m_config.playlists.push_back(p);
+                    }
+                }
                 m_config.isFirstRun = j.value("isFirstRun", true);
                 m_config.hideMinimizeWarning = j.value("hideMinimizeWarning", false);
                 m_config.lastUpdateCheck = j.value("lastUpdateCheck", (int64_t)0);
@@ -104,6 +117,19 @@ namespace Config {
         j["playlistEnabled"] = m_config.playlistEnabled;
         j["playlistIntervalMin"] = m_config.playlistIntervalMin;
         j["playlistShuffle"] = m_config.playlistShuffle;
+        j["activePlaylist"] = ws2s(m_config.activePlaylist);
+        {
+            json plArray = json::array();
+            for (const auto& p : m_config.playlists) {
+                json pj;
+                pj["name"] = ws2s(p.name);
+                json paths = json::array();
+                for (const auto& pp2 : p.paths) paths.push_back(ws2s(pp2));
+                pj["paths"] = paths;
+                plArray.push_back(pj);
+            }
+            j["playlists"] = plArray;
+        }
         j["isFirstRun"] = m_config.isFirstRun;
         j["hideMinimizeWarning"] = m_config.hideMinimizeWarning;
         j["lastUpdateCheck"] = m_config.lastUpdateCheck;

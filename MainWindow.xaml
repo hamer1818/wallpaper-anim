@@ -163,6 +163,18 @@
                         </StackPanel>
 
                         <StackPanel Spacing="8">
+                            <TextBlock x:Name="TxtPlaylistsHeader" Text="Oynatma Listeleri" FontWeight="SemiBold" Foreground="White"/>
+                            <TextBlock x:Name="TxtActivePlaylistLabel" Text="Aktif Liste (döngü bunu kullanır)" FontSize="12" Foreground="#AAAAAA"/>
+                            <ComboBox x:Name="CmbActivePlaylist" Width="240" SelectionChanged="CmbActivePlaylist_SelectionChanged" Background="#1E1E1E" Foreground="White"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBox x:Name="TxtNewPlaylistName" Width="150" PlaceholderText="Yeni liste adı" Background="#1E1E1E" Foreground="White"/>
+                                <Button x:Name="BtnCreatePlaylist" Content="Oluştur" Click="BtnCreatePlaylist_Click" Background="#0078D4" Foreground="White"/>
+                                <Button x:Name="BtnDeletePlaylist" Content="Sil" Click="BtnDeletePlaylist_Click" Background="#3E3E42" Foreground="White"/>
+                            </StackPanel>
+                            <TextBlock x:Name="TxtPlaylistHint" Text="Bir liste seçip Kütüphane'de kartların '+' düğmesiyle wallpaper ekleyin." FontSize="12" Foreground="#AAAAAA" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
                             <TextBlock x:Name="TxtLanguageLabel" Text="Dil (Language)" FontWeight="SemiBold" Foreground="White"/>
                             <ComboBox x:Name="CmbLanguage" Width="200" SelectionChanged="CmbLanguage_SelectionChanged" Background="#1E1E1E" Foreground="White">
                                 <ComboBoxItem Content="Türkçe"/>

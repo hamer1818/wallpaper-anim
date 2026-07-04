@@ -103,6 +103,15 @@ namespace Localization {
         const char* playlistDesc;
         const char* playlistShuffle;
         const char* playlistIntervalLabel;
+
+        // Named playlists
+        const char* playlistsHeader;
+        const char* activePlaylistLabel;
+        const char* newPlaylistPlaceholder;
+        const char* createBtn;
+        const char* deleteBtn;
+        const char* playlistHint;
+        const char* allLibraryItem;
     };
 
     inline const Strings& Get() {
@@ -186,6 +195,14 @@ namespace Localization {
             "Kütüphanedeki duvar kağıtlarını belirli aralıklarla sırayla değiştirir.",
             "Karıştır",
             "Değiştirme Aralığı",
+
+            "Oynatma Listeleri",
+            "Aktif Liste (döngü bunu kullanır)",
+            "Yeni liste adı",
+            "Oluştur",
+            "Sil",
+            "Bir liste seçip Kütüphane'de kartların '+' düğmesiyle wallpaper ekleyin.",
+            "Tüm Kütüphane",
         };
 
         static const Strings en = {
@@ -268,6 +285,14 @@ namespace Localization {
             "Cycles through your library at a set interval.",
             "Shuffle",
             "Rotation Interval",
+
+            "Playlists",
+            "Active Playlist (rotation uses this)",
+            "New playlist name",
+            "Create",
+            "Delete",
+            "Pick a playlist, then use the '+' button on Library cards to add wallpapers.",
+            "Whole Library",
         };
 
         std::wstring lang = Config::ConfigManager::GetInstance().GetConfig().language;
