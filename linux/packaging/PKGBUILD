@@ -1,0 +1,30 @@
+# Maintainer: WallpaperAnim
+# Builds the Linux port from a checkout of this repository:
+#   cd linux/packaging && makepkg -si
+
+pkgname=wallpaperanim
+pkgver=1.5.0
+pkgrel=1
+pkgdesc="Animated wallpaper engine: videos, GIFs and GLSL shaders on your desktop"
+arch=('x86_64')
+url="https://github.com/hamzaturhan/WallpaperAnim"
+license=('MIT')
+depends=('qt6-base' 'qt6-multimedia' 'qt6-declarative' 'mpv' 'layer-shell-qt' 'ffmpeg'
+         'plasma-workspace')
+makedepends=('cmake' 'ninja' 'pkgconf')
+optdepends=('yt-dlp: download YouTube videos from inside the app')
+options=('!debug')
+
+_repo_root="$(cd "${startdir}/../.." && pwd)"
+
+build() {
+    cmake -B "${srcdir}/build" -S "${_repo_root}/linux" -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr
+    cmake --build "${srcdir}/build"
+}
+
+package() {
+    DESTDIR="${pkgdir}" cmake --install "${srcdir}/build"
+    install -Dm644 "${_repo_root}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

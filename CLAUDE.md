@@ -88,8 +88,101 @@ When the UI changes the active wallpaper, it saves config then `PostMessage(App:
 ### Localization
 UI strings come from [src/localization.h](src/localization.h) via `Localization::Get()`, switched by `config.language` (`tr`/`en`, empty = auto). `MainWindow::LoadLocalization()` reapplies all strings on language change. The `Strings` struct uses **positional aggregate initialization** — when adding a key, append it to the struct *and* to both the `tr` and `en` initializer lists in the same position (append at the end to avoid miscounting). Download/update progress status text is localized via these keys.
 
+## Linux port (`linux/`)
+
+The Linux build is a **separate program in the same repository** — no Windows source file
+is compiled into it. It is Qt 6 Widgets for the UI and **libmpv** for playback, and it
+reads/writes the *same* `config.json` schema (UTF-8 `std::string` instead of
+`std::wstring`, plus `linux*`-prefixed keys for Linux-only settings).
+
+```sh
+cd linux
+./build.sh                 # cmake+ninja -> linux/build/wallpaperanim
+./build.sh user-install    # install into ~/.local
+cd packaging && makepkg -si  # Arch/CachyOS package
+```
+
+Deps: `qt6-base qt6-multimedia qt6-declarative mpv layer-shell-qt ffmpeg` (+ optional
+`yt-dlp`). `layer-shell-qt` is optional at build time (guarded by `WPA_HAVE_LAYER_SHELL`).
+
+### The two backends, and why
+
+Wayland has no `WorkerW` equivalent, and the right mechanism differs per compositor.
+This was settled empirically on Plasma 6 / KWin in a nested `kwin_wayland --virtual`
+session — **do not re-litigate it without re-running that experiment**:
+
+- layer-shell **background** layer -> KWin stacks it *below* plasmashell's desktop window,
+  which paints opaque, so it is invisible (screenshots byte-identical to the baseline).
+- layer-shell **bottom** layer -> stacked *above* the desktop window: visible, but it
+  covers the Folder View icons and widgets.
+- A wallpaper plugin that paints nothing does **not** make the desktop window
+  translucent; forcing that window's opacity to 0.99 through a KWin script let only ~1%
+  of the surface underneath bleed through, i.e. the desktop surface is opaque black.
+
+So:
+
+1. `Config::BackendPlasma` — the QML wallpaper plugin in
+   `linux/data/plasma/wallpapers/org.wallpaperanim.video` renders *inside* plasmashell,
+   which is the only way to be behind the icons on KDE. `PlasmaIntegration` installs it
+   into `~/.local/share/plasma/wallpapers` and points the containments at it via
+   `org.kde.PlasmaShell.evaluateScript` (`desktops()[i].wallpaperPlugin = ...`).
+   **The plugin cannot read `config.json`**: Qt 6 refuses `XMLHttpRequest` on `file://`
+   URLs unless `QML_XHR_ALLOW_FILE_READ=1`, which plasmashell does not set, so such a
+   plugin renders nothing at all (verified — this is not theoretical). State therefore
+   goes through the plugin's own Plasma config via `writeConfig`/`reloadConfig`
+   (`PlasmaIntegration::PushState`: `MediaPath`, `FitMode`, `Paused`), and `main.qml`
+   re-reads `root.configuration` on a 2 s timer because `KConfigPropertyMap` does not
+   reliably emit per-key change signals. `App::ApplyWallpaper` activates the plugin on
+   its own when the user applies a wallpaper — startup deliberately does not.
+2. `Config::BackendLayerShell` — `WallpaperWindow` (a `QOpenGLWindow` + LayerShellQt) per
+   `QScreen`, rendering through libmpv's OpenGL render API. This is the only backend that
+   runs GLSL shaders (`ShaderRenderer`).
+
+`Config::BackendAuto` resolves to Plasma on KDE and layer-shell elsewhere
+(`App::EffectiveBackend`).
+
+### Layout
+
+```text
+linux/src/
+├── main.cpp                 # QSurfaceFormat, CLI flags, single-instance socket
+├── app.*                    # tray, surfaces, rotation timer, auto-pause, state.json
+├── config.*                 # same JSON schema as Windows, XDG paths
+├── localization.h           # TR/EN, C++20 designated initializers (not positional!)
+├── wallpaper_window.*       # layer-shell surface + libmpv render API
+├── shader_renderer.*        # Shadertoy-style GLSL (HLSL is Windows-only)
+├── plasma_integration.*     # install/activate/restore the Plasma wallpaper plugin
+├── system_monitor.*         # battery via sysfs, "fullscreen" via power-inhibit D-Bus
+├── thumbnail.*              # ffmpeg CLI
+├── youtube.*                # yt-dlp CLI (no H.264 pin: mpv decodes VP9/AV1 fine)
+├── autostart.*              # ~/.config/autostart/wallpaperanim.desktop
+└── settings_window.*        # Qt Widgets tabs: library/add/playlists/settings/about
+```
+
+Two traps in `PlasmaIntegration` that already cost a debugging round each:
+- `sourcePluginDir()` must look **executable-relative first**, before `WPA_INSTALL_DATADIR`.
+  With the install prefix first, a build-tree run whose prefix happened to be `~/.local`
+  found the previously *installed* package, concluded "source == target, already
+  installed", and silently never refreshed it.
+- Freshness is a **content** comparison, not an mtime one: `QFile::copy` carries the
+  source mtime over, so "is the target older?" answers the wrong question after a copy.
+- When the package does change, `RestartPlasmaShell()` runs. plasmashell caches compiled
+  QML per URL for the life of the process, so replacing files under a running shell
+  otherwise keeps the old wallpaper code loaded.
+
+Notes for future changes:
+- `Localization::Strings` here uses **designated initializers**, unlike the positional
+  Windows lists — append a key to the struct and to both `tr`/`en` blocks.
+- The Windows `config.json` writer rewrites the whole document, so it drops the `linux*`
+  keys if the same file is used on both systems. That is accepted, not a bug to fix
+  silently.
+- Auto-pause on Wayland cannot inspect other clients' windows; `IsFullscreenAppActive()`
+  is deliberately a power-management-inhibit heuristic.
+- There are no automated tests here either. `qmllint` covers the QML plugin;
+  verification is running the app.
+
 ## Conventions
-- Namespaces: `Config`, `Render`, `DesktopIntegration`, `SystemMonitor`, `SystemTray`, `Utils`; WinRT types under `winrt::WallpaperAnimWinUI::implementation`.
+- Namespaces: `Config`, `Render`, `DesktopIntegration`, `SystemMonitor`, `SystemTray`, `Utils`; WinRT types under `winrt::WallpaperAnimWinUI::implementation`. The Linux port adds `PlasmaIntegration`, `Thumbnail`, `Autostart` and reuses `Config`/`SystemMonitor` names with its own implementations.
 - C++20 (`stdcpp20`), C++/WinRT, `NOMINMAX`, `_CRT_SECURE_NO_WARNINGS`. Wallpaper core is native Win32/COM (`ComPtr`); UI is C++/WinRT.
 - Long-running work (downloads, update checks) runs on detached `std::thread`s and marshals results back to the UI with `DispatcherQueue().TryEnqueue(...)`.
 - Debug logging: `App::LogApp` writes to `debug2.log` and `main.cpp`'s `Log` to `debug.log` (plain `std::ofstream` in the working dir). Both are compiled out unless `_DEBUG` is defined, so Release builds produce no log files.
