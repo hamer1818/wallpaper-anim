@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=WallpaperAnim
+GenericName=Animated Wallpaper
+GenericName[tr]=Hareketli Duvar Kağıdı
+Comment=Play videos, GIFs and GLSL shaders as your desktop wallpaper
+Comment[tr]=Videoları, GIF'leri ve GLSL gölgelendiricilerini masaüstü duvar kağıdı olarak oynatın
+Exec=wallpaperanim
+Icon=wallpaperanim
+Terminal=false
+Categories=Utility;DesktopSettings;Qt;KDE;
+Keywords=wallpaper;background;video;animated;
+StartupNotify=false
+SingleMainWindow=true

@@ -19,6 +19,12 @@
 *.sh    text eol=lf
 *.yml   text eol=lf
 
+# The Linux port is built with GCC/CMake on Linux, so its whole subtree stays LF,
+# overriding the Windows CRLF rules above. (Binary rules below still win for assets.)
+linux/** text eol=lf
+*.glsl  text eol=lf
+*.qml   text eol=lf
+
 # Binary assets — never touch line endings, never diff.
 *.png   binary
 *.jpg   binary

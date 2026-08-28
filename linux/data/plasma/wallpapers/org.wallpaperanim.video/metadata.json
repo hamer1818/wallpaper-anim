@@ -1,0 +1,18 @@
+{
+    "KPackageStructure": "Plasma/Wallpaper",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "WallpaperAnim"
+            }
+        ],
+        "Description": "Plays the animated wallpaper selected in WallpaperAnim, behind desktop icons and widgets.",
+        "Description[tr]": "WallpaperAnim'de seçilen hareketli duvar kağıdını, masaüstü simgelerinin ve bileşenlerinin arkasında oynatır.",
+        "Id": "org.wallpaperanim.video",
+        "License": "MIT",
+        "Name": "WallpaperAnim",
+        "Version": "1.5.0"
+    },
+    "X-Plasma-API": "declarativeappletscript",
+    "X-Plasma-MainScript": "ui/main.qml"
+}

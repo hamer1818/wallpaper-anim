@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/hamer1818/wallpaper-anim)](https://github.com/hamer1818/wallpaper-anim/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A lightweight animated wallpaper engine for Windows 10 and 11. Play MP4 videos, GIFs, and raw HLSL shaders behind your desktop icons — with built‑in YouTube downloading, a thumbnail library, and smart resource saving.
+A lightweight animated wallpaper engine for Windows 10/11 and Linux (Wayland). Play MP4 videos, GIFs, and raw shaders behind your desktop icons — with built‑in YouTube downloading, a thumbnail library, and smart resource saving.
 
 ## Features
 
@@ -19,6 +19,7 @@ A lightweight animated wallpaper engine for Windows 10 and 11. Play MP4 videos, 
 - **Auto‑update** — checks GitHub Releases, verifies the download (HTTPS + SHA‑256), and updates in place.
 - **Modern UI** — a clean WinUI 3 settings window, with Turkish and English localization.
 - **System tray** — play/pause, open settings, and quit from the tray.
+- **Linux (Wayland)** — a native port with the same features, rendered with libmpv; see [Linux](#linux) below.
 
 ## Installation
 
@@ -29,6 +30,31 @@ A lightweight animated wallpaper engine for Windows 10 and 11. Play MP4 videos, 
 3. `yt-dlp.exe` and `ffmpeg.exe` are bundled in the release — keep them next to the executable to use the YouTube feature.
 
 Requires Windows 10 (1809+) or Windows 11, x64.
+
+## Linux
+
+A native Wayland port lives in [`linux/`](linux/) — same library, playlists, fit modes and
+`config.json` schema, rendered with **libmpv** behind a **Qt 6** settings UI.
+
+```sh
+sudo pacman -S --needed qt6-base qt6-multimedia qt6-declarative mpv layer-shell-qt \
+                        ffmpeg cmake ninja pkgconf
+cd linux && ./build.sh user-install
+```
+
+Two backends cover the two ways a Wayland desktop can put pixels behind the icons:
+
+- **KDE Plasma** — a small QML wallpaper plugin runs inside plasmashell, so icons and
+  widgets stay on top. Applying a wallpaper switches the desktop over automatically;
+  *Settings → Display Method* can hand it back to Plasma's own wallpaper. (An outside
+  layer-shell surface cannot work on KDE: on the background layer KWin stacks it beneath
+  plasmashell's opaque desktop window, and on the bottom layer it covers the icons.)
+- **wlroots compositors** (Hyprland, Sway, …) — a `zwlr_layer_shell_v1` background
+  surface per output, which is also the backend that runs GLSL shaders.
+
+Shaders on Linux are GLSL (`.glsl`, `.frag`) rather than HLSL; see
+[`assets/sample.glsl`](assets/sample.glsl). Full details, including troubleshooting, are in
+[`linux/README.md`](linux/README.md).
 
 ## Building from source
 
@@ -57,7 +83,7 @@ Two layers run in one process:
 They communicate via Win32 messages posted to the wallpaper window. Media playback goes through an `IMediaPlayer` interface with `VideoPlayer` (Media Foundation), `GifPlayer`, and `ShaderPlayer` implementations, selected by file extension. See [`CLAUDE.md`](CLAUDE.md) for a deeper tour.
 
 ```text
-src/
+src/                         # Windows build
 ├── config.*                 # JSON settings + wallpaper history (%LocalAppData%)
 ├── localization.h           # TR/EN strings
 ├── tray.*                   # system tray icon & menu
@@ -65,11 +91,19 @@ src/
 ├── render/                  # DX11 renderer + video/gif/shader players
 ├── system/                  # fullscreen & battery detection
 └── utils/                   # YouTube downloader, updater, thumbnails, textures
+
+linux/                       # Linux (Wayland) build
+├── src/                     # Qt 6 UI + libmpv renderer + layer-shell surface
+└── data/plasma/wallpapers/  # QML wallpaper plugin for the KDE backend
 ```
 
 ## Tech stack
 
-DirectX 11 · Media Foundation · Win32 · C++/WinRT (WinUI 3, Windows App SDK) · [nlohmann/json](https://github.com/nlohmann/json) · [stb](https://github.com/nothings/stb) · [yt-dlp](https://github.com/yt-dlp/yt-dlp) · [FFmpeg](https://ffmpeg.org/)
+**Windows:** DirectX 11 · Media Foundation · Win32 · C++/WinRT (WinUI 3, Windows App SDK)
+
+**Linux:** Qt 6 · [libmpv](https://mpv.io/) · wlr-layer-shell ([LayerShellQt](https://invent.kde.org/plasma/layer-shell-qt)) · KDE Plasma wallpaper plugin (QML)
+
+**Both:** [nlohmann/json](https://github.com/nlohmann/json) · [stb](https://github.com/nothings/stb) · [yt-dlp](https://github.com/yt-dlp/yt-dlp) · [FFmpeg](https://ffmpeg.org/)
 
 ## License
 
