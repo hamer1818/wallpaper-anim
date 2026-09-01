@@ -36,6 +36,16 @@ Requires Windows 10 (1809+) or Windows 11, x64.
 A native Wayland port lives in [`linux/`](linux/) — same library, playlists, fit modes and
 `config.json` schema, rendered with **libmpv** behind a **Qt 6** settings UI.
 
+On Arch / CachyOS, install the package — pacman pulls in Qt 6, mpv and the rest, and the
+app appears in the application menu:
+
+```sh
+sudo pacman -U wallpaperanim-1.5.0-1-x86_64.pkg.tar.zst   # from the release, or:
+cd linux && ./package.sh install                          # build it from this checkout
+```
+
+Any other distro builds from source:
+
 ```sh
 sudo pacman -S --needed qt6-base qt6-multimedia qt6-declarative mpv layer-shell-qt \
                         ffmpeg cmake ninja pkgconf

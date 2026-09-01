@@ -99,8 +99,14 @@ reads/writes the *same* `config.json` schema (UTF-8 `std::string` instead of
 cd linux
 ./build.sh                 # cmake+ninja -> linux/build/wallpaperanim
 ./build.sh user-install    # install into ~/.local
-cd packaging && makepkg -si  # Arch/CachyOS package
+./package.sh               # -> linux/dist/wallpaperanim-<version>-x86_64.pkg.tar.zst
+cd packaging && makepkg -si  # Arch/CachyOS package, installed in place
 ```
+
+`package.sh` is the Linux counterpart of `build_setup.ps1`: it wraps `makepkg` (PKGDEST
+into `linux/dist`, scratch trees out of the checkout) so the output is a single file the
+recipient installs with `sudo pacman -U`. `PKGBUILD` reads `pkgver` out of the repo root's
+`src/version.h`, so bumping the version there covers the package too.
 
 Deps: `qt6-base qt6-multimedia qt6-declarative mpv layer-shell-qt ffmpeg` (+ optional
 `yt-dlp`). `layer-shell-qt` is optional at build time (guarded by `WPA_HAVE_LAYER_SHELL`).

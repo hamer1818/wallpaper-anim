@@ -1,21 +1,23 @@
 # Maintainer: WallpaperAnim
 # Builds the Linux port from a checkout of this repository:
 #   cd linux/packaging && makepkg -si
+# To produce a package file to hand to someone else, use linux/package.sh instead.
 
 pkgname=wallpaperanim
-pkgver=1.5.0
+_repo_root="$(cd "${startdir}/../.." && pwd)"
+# Version is single-sourced in src/version.h so the Windows and Linux builds cannot
+# drift apart; an empty pkgver here means that file moved or changed shape.
+pkgver="$(sed -n 's/^#define APP_VERSION_STRING "\([^"]*\)".*/\1/p' "${_repo_root}/src/version.h")"
 pkgrel=1
 pkgdesc="Animated wallpaper engine: videos, GIFs and GLSL shaders on your desktop"
 arch=('x86_64')
-url="https://github.com/hamzaturhan/WallpaperAnim"
+url="https://github.com/hamer1818/wallpaper-anim"
 license=('MIT')
-depends=('qt6-base' 'qt6-multimedia' 'qt6-declarative' 'mpv' 'layer-shell-qt' 'ffmpeg'
-         'plasma-workspace')
+depends=('qt6-base' 'qt6-multimedia' 'qt6-declarative' 'mpv' 'layer-shell-qt' 'ffmpeg')
 makedepends=('cmake' 'ninja' 'pkgconf')
-optdepends=('yt-dlp: download YouTube videos from inside the app')
+optdepends=('plasma-workspace: KDE Plasma backend, the only one that draws behind the desktop icons on KDE'
+            'yt-dlp: download YouTube videos from inside the app')
 options=('!debug')
-
-_repo_root="$(cd "${startdir}/../.." && pwd)"
 
 build() {
     cmake -B "${srcdir}/build" -S "${_repo_root}/linux" -G Ninja \

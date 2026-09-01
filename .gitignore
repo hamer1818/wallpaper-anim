@@ -1,5 +1,7 @@
 # Build output
 build/
+# Packaged .pkg.tar.zst files produced by linux/package.sh
+linux/dist/
 x64/
 Generated Files/
 *.obj

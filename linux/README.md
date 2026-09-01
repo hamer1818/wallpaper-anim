@@ -8,6 +8,31 @@ Rendering is **libmpv** (hardware decoded, frames stay on the GPU) and the UI is
 Widgets**. Nothing about the Windows/DirectX code is reused; this is a separate program
 in the same repository.
 
+## Install
+
+**Arch / CachyOS — one file, one command.** This is the counterpart of the Windows
+`WallpaperAnimSetup.exe`: pacman pulls in Qt 6, mpv and the rest by itself, and the app
+lands in the application menu. Nothing to extract, no PATH to set.
+
+```sh
+sudo pacman -U wallpaperanim-1.5.0-1-x86_64.pkg.tar.zst
+```
+
+Build that file from a checkout with:
+
+```sh
+cd linux && ./package.sh            # -> linux/dist/wallpaperanim-<version>-x86_64.pkg.tar.zst
+cd linux && ./package.sh install    # build it and install it here
+```
+
+Optional extra, only for the YouTube tab: `sudo pacman -S yt-dlp`.
+
+First run: launch **WallpaperAnim** from the menu, add a video (or paste a YouTube link)
+and apply it — on KDE that switches the desktop over to the app's wallpaper plugin
+automatically. Turn on *Settings → Start at login* to have it come back after a reboot.
+
+Any other distro builds from source; see below.
+
 ## Requirements
 
 Arch / CachyOS:
@@ -30,7 +55,8 @@ cd linux
 ./build.sh install         # installs into /usr/local (sudo)
 ```
 
-Arch package, straight from a checkout:
+Arch package, straight from a checkout (`package.sh` above wraps this and drops the
+result in `linux/dist/` instead of installing it):
 
 ```sh
 cd linux/packaging && makepkg -si
