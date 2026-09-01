@@ -36,6 +36,9 @@ public:
     void ApplyPlaybackSettings();
     // Publishes the current wallpaper/fit/pause state to the Plasma wallpaper plugin.
     void PushPlasmaState();
+    // Records that the user handed the Plasma desktop to us (or took it back), which
+    // is what allows the watchdog to re-take it after plasmashell drops the plugin.
+    void SetPlasmaOwnership(bool owned);
     // Recreates the wallpaper surfaces after a backend/layer/screen change.
     void RebuildSurfaces();
     void RefreshRotationTimer();
@@ -65,6 +68,7 @@ private:
     void applyPauseState();
     void addToHistory(const QString& path, const QString& displayName, int type);
     QStringList rotationCandidates() const;
+    void reassertPlasmaWallpaper();
 
     static App* s_instance;
 
@@ -84,4 +88,7 @@ private:
     bool m_autoPaused = false;
     int m_rotationIndex = 0;
     bool m_started = false;
+    // Monitor ticks since the last Plasma ownership check; the check costs a blocking
+    // D-Bus round trip, so it runs far less often than the 3 s pause polling.
+    int m_plasmaCheckTicks = 0;
 };

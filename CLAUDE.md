@@ -159,7 +159,16 @@ linux/src/
 └── settings_window.*        # Qt Widgets tabs: library/add/playlists/settings/about
 ```
 
-Two traps in `PlasmaIntegration` that already cost a debugging round each:
+Three traps in `PlasmaIntegration` that already cost a debugging round each:
+- Never drive the scripting calls off `desktops()`. It returns the containments of the
+  *current activity*, not what is painted on the outputs. A session whose current
+  activity has gone empty (kactivitymanagerd never wrote `[main]currentActivity`, or an
+  activity switch half-failed) hands back the activity's containment with `screen == -1`
+  while a different, activity-less containment owns screen 0 — so `wallpaperPlugin = ...`
+  succeeds, `IsActive()` says yes, and the desktop never changes. Every script iterates
+  `desktopForScreen(0..screenCount-1)` instead (`desktopListPrologue()`), falling back to
+  `desktops()` only when that is empty. `IsActive()` likewise requires *every* on-screen
+  containment to be ours; "at least one is" made a half-lost desktop read as fine for ever.
 - `sourcePluginDir()` must look **executable-relative first**, before `WPA_INSTALL_DATADIR`.
   With the install prefix first, a build-tree run whose prefix happened to be `~/.local`
   found the previously *installed* package, concluded "source == target, already
@@ -169,6 +178,16 @@ Two traps in `PlasmaIntegration` that already cost a debugging round each:
 - When the package does change, `RestartPlasmaShell()` runs. plasmashell caches compiled
   QML per URL for the life of the process, so replacing files under a running shell
   otherwise keeps the old wallpaper code loaded.
+
+plasmashell re-decides which containment owns a screen on activity changes, monitor
+hotplug and its own restarts, and the new containment brings its own `wallpaperplugin` —
+so the wallpaper silently reverts while the app keeps running. `App::reassertPlasmaWallpaper()`
+(startup, then every ~15 s off `m_monitorTimer`) re-takes the desktop, gated on
+`config.plasmaWallpaperActive` (`linuxPlasmaWallpaperActive` in the JSON) so it only ever
+reclaims a desktop the user actually handed over — applying a wallpaper or the Activate
+button sets it, Restore clears it. Configs predating the flag adopt it from
+`PlasmaIntegration::IsConfiguredAnywhere()`, which asks the persisted layout whether *any*
+containment (on screen or orphaned) is already pointed at the plugin.
 
 Notes for future changes:
 - `Localization::Strings` here uses **designated initializers**, unlike the positional

@@ -103,8 +103,8 @@ void App::Start(bool showSettingsWindow)
     connect(qApp, &QGuiApplication::screenRemoved, this, &App::onScreenRemoved);
 
     if (EffectiveBackend() == Config::BackendPlasma) {
-        // Keep the installed copy of the QML plugin current, but never hijack the
-        // desktop wallpaper on startup: only an explicit action in the UI does that.
+        // Keep the installed copy of the QML plugin current, but never hijack a desktop
+        // the user has not offered us: only an explicit action in the UI does that.
         QString installError;
         bool packageUpdated = false;
         if (!PlasmaIntegration::InstallPlugin(&installError, &packageUpdated)) {
@@ -115,6 +115,15 @@ void App::Start(bool showSettingsWindow)
             qWarning() << "WallpaperAnim: Plasma wallpaper plugin updated, restarting plasmashell";
             PlasmaIntegration::RestartPlasmaShell();
         }
+
+        // Configs written before the ownership flag existed record it only in the live
+        // desktop, so adopt that on the first run of a build that knows about the flag.
+        if (!cfg.plasmaWallpaperActive && PlasmaIntegration::IsConfiguredAnywhere()) {
+            cfg.plasmaWallpaperActive = true;
+        }
+        // The desktop is ours across restarts: plasmashell may well have rebound it to
+        // a different containment (or come up before we did) while we were gone.
+        reassertPlasmaWallpaper();
     }
 
     RebuildSurfaces();
@@ -266,6 +275,7 @@ bool App::ApplyWallpaper(const QString& path, QString* errorOut)
                 return false;
             }
         }
+        SetPlasmaOwnership(true);
         PushPlasmaState();
     }
 
@@ -329,6 +339,37 @@ void App::PushPlasmaState()
     const auto& cfg = Config::ConfigManager::GetInstance().GetConfig();
     PlasmaIntegration::PushState(QString::fromStdString(cfg.lastVideoPath), cfg.fitMode,
                                  m_userPaused || m_autoPaused);
+}
+
+void App::SetPlasmaOwnership(bool owned)
+{
+    auto& manager = Config::ConfigManager::GetInstance();
+    auto& cfg = manager.GetConfig();
+    if (cfg.plasmaWallpaperActive == owned) return;
+    cfg.plasmaWallpaperActive = owned;
+    m_plasmaCheckTicks = 0;
+    manager.Save();
+}
+
+// plasmashell hands a screen to whichever desktop containment it thinks belongs
+// there, and that decision is re-made on activity changes, monitor hotplug and shell
+// restarts. The containment it picks carries its own wallpaperplugin, so ours simply
+// stops being the wallpaper - silently, with the app still running happily. Re-take
+// the desktop whenever the user has already given it to us.
+void App::reassertPlasmaWallpaper()
+{
+    const auto& cfg = Config::ConfigManager::GetInstance().GetConfig();
+    if (!cfg.plasmaWallpaperActive) return;
+    if (!PlasmaIntegration::IsPlasmaShellRunning()) return;
+    if (PlasmaIntegration::IsActive()) return;
+
+    qWarning() << "WallpaperAnim: Plasma is no longer using our wallpaper plugin, re-activating";
+    QString error;
+    if (!PlasmaIntegration::Activate(&error)) {
+        qWarning() << "WallpaperAnim: could not re-activate the Plasma wallpaper:" << error;
+        return;
+    }
+    PushPlasmaState();
 }
 
 void App::ApplyPlaybackSettings()
@@ -440,6 +481,13 @@ void App::onMonitorTick()
     if (shouldPause != m_autoPaused) {
         m_autoPaused = shouldPause;
         applyPauseState();
+    }
+
+    // Every fifth tick (~15 s): cheap enough to catch a lost desktop quickly, rare
+    // enough that the blocking D-Bus round trip does not ride on the pause polling.
+    if (EffectiveBackend() == Config::BackendPlasma && ++m_plasmaCheckTicks >= 5) {
+        m_plasmaCheckTicks = 0;
+        reassertPlasmaWallpaper();
     }
 }
 

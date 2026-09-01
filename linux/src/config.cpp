@@ -137,6 +137,7 @@ namespace Config {
             m_config.pauseWhenHidden = j.value("linuxPauseWhenHidden", true);
             m_config.hardwareDecode = j.value("linuxHardwareDecode", true);
             m_config.volume = j.value("linuxVolume", 0);
+            m_config.plasmaWallpaperActive = j.value("linuxPlasmaWallpaperActive", false);
 
             // Clamp anything an older/edited config may have overgrown.
             if (m_config.history.size() > kMaxHistoryItems) {
@@ -196,6 +197,7 @@ namespace Config {
         j["linuxPauseWhenHidden"] = m_config.pauseWhenHidden;
         j["linuxHardwareDecode"] = m_config.hardwareDecode;
         j["linuxVolume"] = m_config.volume;
+        j["linuxPlasmaWallpaperActive"] = m_config.plasmaWallpaperActive;
 
         // Write through a temp file: the Plasma wallpaper plugin polls this file and
         // must never observe a half-written document.

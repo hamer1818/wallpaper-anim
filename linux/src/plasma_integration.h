@@ -23,8 +23,14 @@ namespace PlasmaIntegration {
     // Restarts plasmashell so a refreshed plugin package takes effect.
     bool RestartPlasmaShell();
 
-    // Whether the desktop containments currently use our plugin.
+    // Whether every desktop containment that is actually on a screen uses our plugin.
     bool IsActive();
+
+    // Whether *any* desktop containment in plasmashell's persisted layout is set to our
+    // plugin, on screen or not. Answers "has the user ever handed us the desktop?" for a
+    // config that predates the ownership flag - including the case IsActive() is false
+    // for precisely because plasmashell moved the desktop to another containment.
+    bool IsConfiguredAnywhere();
 
     // Points every desktop containment at our plugin / back at org.kde.image.
     bool Activate(QString* errorOut = nullptr);

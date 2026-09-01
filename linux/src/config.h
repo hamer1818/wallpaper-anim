@@ -74,6 +74,11 @@ namespace Config {
         bool pauseWhenHidden = true;
         bool hardwareDecode = true;
         int volume = 0; // 0 = silent; the wallpaper is muted by default
+        // Set once the user hands the Plasma desktop to us (applying a wallpaper, or
+        // the Activate button). It is what licenses App to re-take the containment
+        // later - plasmashell drops the wallpaper plugin on its own when it rebinds a
+        // desktop - without ever hijacking a desktop the user never offered.
+        bool plasmaWallpaperActive = false;
     };
 
     class ConfigManager {

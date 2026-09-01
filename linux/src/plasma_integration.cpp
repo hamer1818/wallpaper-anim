@@ -124,6 +124,32 @@ namespace PlasmaIntegration {
             return false;
         }
 
+        // plasmashell's desktops() lists the containments of the *current activity*,
+        // which is not the same question as "what is painted on the outputs right now".
+        // A session whose current activity has gone empty - kactivitymanagerd never
+        // wrote [main]currentActivity, or an activity switch half-failed - keeps
+        // returning the activity's containment with screen == -1 while an entirely
+        // different, activity-less containment owns screen 0. Setting wallpaperPlugin
+        // on that orphan succeeds, reports success, and changes nothing on screen.
+        // desktopForScreen() asks the question that matters, so every script below
+        // drives off it and only falls back to desktops() when there is no output.
+        QString desktopListPrologue()
+        {
+            return QStringLiteral(
+                "var wpaTargets = [];\n"
+                "var wpaSeen = {};\n"
+                "for (var wpaS = 0; wpaS < screenCount; wpaS++) {\n"
+                "    var wpaC = desktopForScreen(wpaS);\n"
+                "    if (!wpaC || wpaSeen[wpaC.id]) continue;\n"
+                "    wpaSeen[wpaC.id] = true;\n"
+                "    wpaTargets.push(wpaC);\n"
+                "}\n"
+                "if (wpaTargets.length == 0) {\n"
+                "    var wpaAll = desktops();\n"
+                "    for (var wpaI = 0; wpaI < wpaAll.length; wpaI++) wpaTargets.push(wpaAll[wpaI]);\n"
+                "}\n");
+        }
+
         QString evaluateScript(const QString& script)
         {
             QDBusInterface shell(QStringLiteral("org.kde.plasmashell"),
@@ -143,24 +169,26 @@ namespace PlasmaIntegration {
                 return false;
             }
 
-            QString script = QStringLiteral(
-                                 "var screens = desktops();\n"
-                                 "for (var i = 0; i < screens.length; i++) {\n"
-                                 "    screens[i].wallpaperPlugin = '%1';\n")
-                                 .arg(pluginId);
+            QString script = desktopListPrologue();
+            script += QStringLiteral(
+                          "for (var i = 0; i < wpaTargets.length; i++) {\n"
+                          "    wpaTargets[i].wallpaperPlugin = '%1';\n")
+                          .arg(pluginId);
 
             if (pluginId == QString::fromUtf8(kPluginId)) {
                 // Seed the plugin's state in the same call, so it has something to play
                 // the moment plasmashell instantiates it.
                 const auto& cfg = Config::ConfigManager::GetInstance().GetConfig();
                 script += QStringLiteral(
-                              "    screens[i].currentConfigGroup = ['Wallpaper', '%1', 'General'];\n"
-                              "    screens[i].writeConfig('MediaPath', '%2');\n"
-                              "    screens[i].writeConfig('FitMode', %3);\n")
+                              "    wpaTargets[i].currentConfigGroup = ['Wallpaper', '%1', 'General'];\n"
+                              "    wpaTargets[i].writeConfig('MediaPath', '%2');\n"
+                              "    wpaTargets[i].writeConfig('FitMode', %3);\n")
                               .arg(pluginId, jsQuote(QString::fromStdString(cfg.lastVideoPath)))
                               .arg(cfg.fitMode);
             }
-            script += QStringLiteral("}\n");
+            // Report back how many containments were touched: an empty target list is
+            // the difference between "the wallpaper changed" and "the call succeeded".
+            script += QStringLiteral("}\nprint(wpaTargets.length);\n");
 
             QDBusInterface shell(QStringLiteral("org.kde.plasmashell"),
                                  QStringLiteral("/PlasmaShell"),
@@ -171,12 +199,21 @@ namespace PlasmaIntegration {
                 if (errorOut) *errorOut = reply.error().message();
                 return false;
             }
+            if (reply.value().trimmed() == QLatin1String("0")) {
+                if (errorOut) *errorOut = QStringLiteral("plasmashell reports no desktop containment");
+                return false;
+            }
             return true;
         }
 
-        // plasmashell persists the active plugin here; reading it avoids depending on
-        // evaluateScript's return value, which is empty for statements.
-        QString configuredPlugin()
+        // plasmashell persists the active plugin here; reading it is the fallback for
+        // when the shell is unreachable. It cannot tell which containment is on screen,
+        // so it answers the stricter question - do *all* desktop containments use this
+        // plugin? A session carrying a stale extra containment (an old activity, a
+        // monitor that is gone) then correctly reads as "not fully applied".
+        // Counts the desktop containments in the persisted layout, and how many of them
+        // carry pluginId. Returns false when the file cannot be read at all.
+        bool countContainments(const QString& pluginId, int* totalOut, int* matchingOut)
         {
             const QString path = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
                                  + QStringLiteral("/plasma-org.kde.plasma.desktop-appletsrc");
@@ -184,40 +221,55 @@ namespace PlasmaIntegration {
             if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
 
             QTextStream in(&file);
-            bool inDesktopContainment = false;
-            QString pendingPlugin;
+            bool inContainment = false;
+            QString wallpaperPlugin;
             QString containmentPlugin;
+            int desktopContainments = 0;
+            int matching = 0;
+
+            // Desktop containments are the folder view / plain desktop ones; panels
+            // carry a wallpaperplugin key too and must not be mistaken for them.
+            const auto flush = [&]() {
+                if (containmentPlugin.isEmpty() || containmentPlugin == QLatin1String("org.kde.panel")) {
+                    return;
+                }
+                ++desktopContainments;
+                if (wallpaperPlugin == pluginId) ++matching;
+            };
+
             while (!in.atEnd()) {
                 const QString line = in.readLine().trimmed();
                 if (line.startsWith(QLatin1Char('['))) {
                     // A new group: only top-level [Containments][N] groups matter.
                     static const QRegularExpression containmentGroup(
                         QStringLiteral("^\\[Containments\\]\\[\\d+\\]$"));
-                    if (containmentGroup.match(line).hasMatch()) {
-                        inDesktopContainment = true;
-                        pendingPlugin.clear();
-                        containmentPlugin.clear();
-                    } else {
-                        inDesktopContainment = false;
-                    }
+                    if (inContainment) flush();
+                    inContainment = containmentGroup.match(line).hasMatch();
+                    wallpaperPlugin.clear();
+                    containmentPlugin.clear();
                     continue;
                 }
-                if (!inDesktopContainment) continue;
+                if (!inContainment) continue;
 
                 if (line.startsWith(QLatin1String("plugin="))) {
                     containmentPlugin = line.mid(7);
                 } else if (line.startsWith(QLatin1String("wallpaperplugin="))) {
-                    pendingPlugin = line.mid(16);
-                }
-
-                // Desktop containments are the folder view / plain desktop ones; panels
-                // carry a wallpaperplugin key too and must not be mistaken for them.
-                if (!pendingPlugin.isEmpty() && !containmentPlugin.isEmpty()
-                    && containmentPlugin != QLatin1String("org.kde.panel")) {
-                    return pendingPlugin;
+                    wallpaperPlugin = line.mid(16);
                 }
             }
-            return {};
+            if (inContainment) flush();
+
+            if (totalOut) *totalOut = desktopContainments;
+            if (matchingOut) *matchingOut = matching;
+            return true;
+        }
+
+        bool everyContainmentUses(const QString& pluginId)
+        {
+            int total = 0;
+            int matching = 0;
+            if (!countContainments(pluginId, &total, &matching)) return false;
+            return total > 0 && total == matching;
         }
 
     } // namespace
@@ -279,20 +331,35 @@ namespace PlasmaIntegration {
         // Ask plasmashell directly: evaluateScript hands back whatever the script
         // prints, which is authoritative even before the config file is flushed.
         if (IsPlasmaShellRunning()) {
-            const QString output = evaluateScript(QStringLiteral(
-                                                      "var screens = desktops();\n"
+            const QString output = evaluateScript(desktopListPrologue()
+                                                  + QStringLiteral(
                                                       "var plugins = [];\n"
-                                                      "for (var i = 0; i < screens.length; i++) {\n"
-                                                      "    plugins.push(screens[i].wallpaperPlugin);\n"
+                                                      "for (var i = 0; i < wpaTargets.length; i++) {\n"
+                                                      "    plugins.push(wpaTargets[i].wallpaperPlugin);\n"
                                                       "}\n"
                                                       "print(plugins.join(','));\n"))
                                        .trimmed();
             if (!output.isEmpty()) {
-                return output.split(QLatin1Char(',')).contains(QString::fromUtf8(kPluginId));
+                // Every screen must be ours. Answering "one of them is" let a session
+                // where plasmashell had moved the desktop to another containment read
+                // as active for ever, so nothing ever re-took the desktop.
+                const QStringList plugins = output.split(QLatin1Char(','));
+                for (const QString& plugin : plugins) {
+                    if (plugin.trimmed() != QString::fromUtf8(kPluginId)) return false;
+                }
+                return true;
             }
         }
         // plasmashell unreachable: fall back to what it last persisted.
-        return configuredPlugin() == QString::fromUtf8(kPluginId);
+        return everyContainmentUses(QString::fromUtf8(kPluginId));
+    }
+
+    bool IsConfiguredAnywhere()
+    {
+        int total = 0;
+        int matching = 0;
+        if (!countContainments(QString::fromUtf8(kPluginId), &total, &matching)) return false;
+        return matching > 0;
     }
 
     bool Activate(QString* errorOut)
@@ -325,21 +392,21 @@ namespace PlasmaIntegration {
             return false;
         }
 
-        const QString script = QStringLiteral(
-                                   "var screens = desktops();\n"
-                                   "for (var i = 0; i < screens.length; i++) {\n"
-                                   "    if (screens[i].wallpaperPlugin != '%1') {\n"
+        const QString script = desktopListPrologue()
+                               + QStringLiteral(
+                                   "for (var i = 0; i < wpaTargets.length; i++) {\n"
+                                   "    if (wpaTargets[i].wallpaperPlugin != '%1') {\n"
                                    "        continue;\n"
                                    "    }\n"
-                                   "    screens[i].currentConfigGroup = ['Wallpaper', '%1', 'General'];\n"
-                                   "    screens[i].writeConfig('MediaPath', '%2');\n"
-                                   "    screens[i].writeConfig('FitMode', %3);\n"
-                                   "    screens[i].writeConfig('Paused', %4);\n"
-                                   "    screens[i].reloadConfig();\n"
+                                   "    wpaTargets[i].currentConfigGroup = ['Wallpaper', '%1', 'General'];\n"
+                                   "    wpaTargets[i].writeConfig('MediaPath', '%2');\n"
+                                   "    wpaTargets[i].writeConfig('FitMode', %3);\n"
+                                   "    wpaTargets[i].writeConfig('Paused', %4);\n"
+                                   "    wpaTargets[i].reloadConfig();\n"
                                    "}\n")
-                                   .arg(QString::fromUtf8(kPluginId), jsQuote(mediaPath))
-                                   .arg(fitMode)
-                                   .arg(paused ? QStringLiteral("true") : QStringLiteral("false"));
+                                     .arg(QString::fromUtf8(kPluginId), jsQuote(mediaPath))
+                                     .arg(fitMode)
+                                     .arg(paused ? QStringLiteral("true") : QStringLiteral("false"));
 
         QDBusInterface shell(QStringLiteral("org.kde.plasmashell"),
                              QStringLiteral("/PlasmaShell"),

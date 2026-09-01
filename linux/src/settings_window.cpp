@@ -852,6 +852,8 @@ void SettingsWindow::onPlasmaActivate()
     if (!PlasmaIntegration::Activate(&error)) {
         QMessageBox::warning(this, tr8(strings.errorTitle),
                              error.isEmpty() ? tr8(strings.plasmaInstallFailed) : error);
+    } else if (m_app) {
+        m_app->SetPlasmaOwnership(true);
     }
     if (m_app) m_app->PushPlasmaState();
     RefreshPlasmaStatus();
@@ -861,6 +863,9 @@ void SettingsWindow::onPlasmaRestore()
 {
     const auto& strings = Localization::Get();
     QString error;
+    // Give the desktop back before dropping ownership, so the watchdog cannot race in
+    // and re-take it between the two.
+    if (m_app) m_app->SetPlasmaOwnership(false);
     if (!PlasmaIntegration::Restore(&error) && !error.isEmpty()) {
         QMessageBox::warning(this, tr8(strings.errorTitle), error);
     }
