@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
-project(wallpaperanim VERSION 1.5.0 LANGUAGES CXX)
+# No VERSION here on purpose: the version is single-sourced in the repository root's
+# src/version.h, which the code and the PKGBUILD both read. A copy in this file would
+# only be a second place to forget.
+project(wallpaperanim LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

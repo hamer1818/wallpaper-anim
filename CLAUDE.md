@@ -33,7 +33,7 @@ Release packaging (run **after** a Release build so `x64\Release` is current):
 .\build_setup.ps1
 
 # Creates WallpaperAnim-Portable.zip and publishes a GitHub release via `gh release create`.
-# Edit the hardcoded version tag/notes in this script before running.
+# The tag comes from src/version.h through scripts\get-version.ps1 - nothing to edit here.
 .\release.ps1
 ```
 
@@ -41,7 +41,7 @@ There are no automated tests. Verification is manual (run the app, confirm wallp
 
 ## Versioning
 
-Version is single-sourced in [src/version.h](src/version.h) (`APP_VERSION_*` macros). The UI reads `APP_VERSION_STRING_W`. When bumping the version, update version.h **and** the tag/notes in `release.ps1`.
+Version is single-sourced in [src/version.h](src/version.h) (`APP_VERSION_*` macros). The UI reads `APP_VERSION_STRING_W`; `release.ps1` and the Linux `PKGBUILD` both derive their tag/`pkgver` from it, so bumping that one file is the whole job.
 
 ## Architecture
 
