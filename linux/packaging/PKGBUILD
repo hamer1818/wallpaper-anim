@@ -8,7 +8,7 @@ _repo_root="$(cd "${startdir}/../.." && pwd)"
 # Version is single-sourced in src/version.h so the Windows and Linux builds cannot
 # drift apart; an empty pkgver here means that file moved or changed shape.
 pkgver="$(sed -n 's/^#define APP_VERSION_STRING "\([^"]*\)".*/\1/p' "${_repo_root}/src/version.h")"
-pkgrel=1
+pkgrel=2
 pkgdesc="Animated wallpaper engine: videos, GIFs and GLSL shaders on your desktop"
 arch=('x86_64')
 url="https://github.com/hamer1818/wallpaper-anim"

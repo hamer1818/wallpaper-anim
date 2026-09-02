@@ -4,6 +4,8 @@
 # release. Run it on an Arch-based machine after the version has been bumped.
 #
 #   ./release.sh              build and upload to v<version>
+#   ./release.sh --tag T      upload to tag T instead (Linux-only pre-releases)
+#   ./release.sh --prerelease mark a release created here as a pre-release
 #   ./release.sh --create     also create the release if it does not exist yet
 #   ./release.sh --dry-run    build and checksum, but upload nothing
 #
@@ -21,10 +23,17 @@ stable_name="wallpaperanim-x86_64.pkg.tar.zst"
 
 CREATE=0
 DRY_RUN=0
+PRERELEASE=0
+TAG_OVERRIDE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
     --create) CREATE=1 ;;
     --dry-run) DRY_RUN=1 ;;
+    --prerelease) PRERELEASE=1 ;;
+    --tag)
+        TAG_OVERRIDE="${2:-}"
+        shift
+        ;;
     -h | --help)
         sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
         exit 0
@@ -48,7 +57,10 @@ gh auth status >/dev/null 2>&1 || die "gh is not authenticated. Run: gh auth log
 # The version lives in src/version.h and nowhere else; PKGBUILD reads the same file.
 version="$(sed -n 's/^#define APP_VERSION_STRING "\([^"]*\)".*/\1/p' "${repo_root}/src/version.h")"
 [[ -n "${version}" ]] || die "Could not read APP_VERSION_STRING from ${repo_root}/src/version.h"
-tag="v${version}"
+# Linux packages often ship ahead of the Windows build of the same version; those go
+# out under their own pre-release tag so the Windows updater, which reads
+# /releases/latest, never sees a release without its own assets.
+tag="${TAG_OVERRIDE:-v${version}}"
 
 echo "Version ${version} -> release ${tag}"
 echo
@@ -89,7 +101,9 @@ the current commit, so be on the right branch - re-run with --create."
     fi
     echo
     echo "Creating release ${tag} ..."
-    gh release create "${tag}" -t "Release ${tag}" \
+    create_args=()
+    [[ ${PRERELEASE} -eq 1 ]] && create_args+=(--prerelease)
+    gh release create "${tag}" "${create_args[@]}" -t "Release ${tag}" \
         -n "WallpaperAnim ${tag}.
 
 **Linux (Arch / CachyOS):**

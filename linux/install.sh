@@ -108,26 +108,36 @@ if [[ -n "${LOCAL_FILE}" ]]; then
     PKG="${LOCAL_FILE}"
     info "Using local package: ${PKG}"
 else
-    api="https://api.github.com/repos/${REPO}/releases/latest"
+    # Not /releases/latest: that endpoint hides pre-releases, and the Linux package is
+    # published as one whenever the Windows build of the same version is not out yet.
+    # The list comes back newest first, so the first release carrying a Linux asset wins.
+    api="https://api.github.com/repos/${REPO}/releases?per_page=30"
     [[ -n "${TAG}" ]] && api="https://api.github.com/repos/${REPO}/releases/tags/${TAG}"
 
-    info "Looking up the ${TAG:-latest} release of ${REPO} ..."
+    info "Looking up the ${TAG:-newest} release of ${REPO} with a Linux package ..."
     release_json="${TMP}/release.json"
     url=""
     if curl -fsSL --max-time 30 "${api}" -o "${release_json}"; then
-        TAG="${TAG:-$(grep -m1 '"tag_name"' "${release_json}" | cut -d'"' -f4)}"
-        url="$(grep -oE '"browser_download_url":[[:space:]]*"[^"]*'"${ASSET_PATTERN}"'"' "${release_json}" |
-            cut -d'"' -f4 | grep -v "${STABLE_ASSET}\$" | head -1)"
-        # The unversioned copy is the fallback within the release itself.
-        [[ -z "${url}" ]] && url="$(grep -oE '"browser_download_url":[[:space:]]*"[^"]*'"${ASSET_PATTERN}"'"' \
-            "${release_json}" | cut -d'"' -f4 | head -1)"
+        # tag_name always precedes its own assets in the JSON, so a flat ordered scan is
+        # enough to attribute each download URL to the release it belongs to.
+        matches="$(grep -oE '"(tag_name|browser_download_url)":[[:space:]]*"[^"]*"' "${release_json}" |
+            awk -F'"' '
+                $2 == "tag_name" { if (found) exit; tag = $4 }
+                $2 == "browser_download_url" && $4 ~ /'"${ASSET_PATTERN}"'$/ { found = 1; print tag "\t" $4 }
+            ')"
+        if [[ -n "${matches}" ]]; then
+            TAG="$(printf '%s\n' "${matches}" | head -1 | cut -f1)"
+            # Prefer the versioned asset; the unversioned copy exists for the fallback URL.
+            url="$(printf '%s\n' "${matches}" | cut -f2 | grep -v "/${STABLE_ASSET}\$" | head -1)"
+            [[ -z "${url}" ]] && url="$(printf '%s\n' "${matches}" | cut -f2 | head -1)"
+        fi
     else
         # Unauthenticated API calls are rate limited to 60/hour per IP; the redirecting
         # download URL is not, so a throttled user can still install.
         warn "GitHub API unreachable or rate limited; falling back to the direct download URL."
         url="https://github.com/${REPO}/releases/latest/download/${STABLE_ASSET}"
     fi
-    [[ -n "${url}" ]] || die "The ${TAG:-latest} release has no Linux package (expected an *-x86_64.pkg.tar.zst asset).
+    [[ -n "${url}" ]] || die "No release of ${REPO} carries a Linux package (expected an *-x86_64.pkg.tar.zst asset).
 Releases: https://github.com/${REPO}/releases"
 
     PKG="${TMP}/$(basename "${url}")"
