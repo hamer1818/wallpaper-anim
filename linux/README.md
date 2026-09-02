@@ -25,6 +25,10 @@ versions the package was compiled against with the ones on this machine and stop
 explanation rather than leaving you with an app that installs cleanly and never starts —
 `--force` overrides, `--tag v1.6.0` pins a version, `--dry-run` shows what it would do.
 
+Every run is appended to `~/wallpaperanim-install.log`, and a failure prints that path
+plus the command that collects a full diagnostic report — so a `curl | bash` that goes
+wrong leaves two files to send back rather than a screenshot of a terminal.
+
 Or download the `.pkg.tar.zst` from [Releases](https://github.com/hamer1818/wallpaper-anim/releases)
 and install it by hand:
 

@@ -22,6 +22,7 @@ REPO="hamer1818/wallpaper-anim"
 ASSET_PATTERN='x86_64\.pkg\.tar\.zst'
 STABLE_ASSET="wallpaperanim-x86_64.pkg.tar.zst"
 
+ORIGINAL_ARGS="$*"
 TAG=""
 LOCAL_FILE=""
 FORCE=0
@@ -64,16 +65,71 @@ DIM=$'\033[2m'
 OFF=$'\033[0m'
 [[ -t 1 ]] || { RED=""; YEL=""; GRN=""; DIM=""; OFF=""; }
 
-info() { printf '%s\n' "$*"; }
-warn() { printf '%s%s%s\n' "${YEL}" "$*" "${OFF}" >&2; }
-die() {
-    printf '%s%s%s\n' "${RED}" "$*" "${OFF}" >&2
-    exit 1
-}
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# Everything printed also lands in one predictable file. A `curl | bash` failure is
+# otherwise only in the terminal scrollback, which is exactly what does not make it into
+# a bug report - one fixed path is something you can tell someone over chat.
+LOG="${HOME:-/tmp}/wallpaperanim-install.log"
+if ! : >>"${LOG}" 2>/dev/null; then
+    LOG="${TMPDIR:-/tmp}/wallpaperanim-install.log"
+    : >>"${LOG}" 2>/dev/null || LOG="/dev/null"
+fi
+
+log() { printf '%s\n' "$*" >>"${LOG}"; }
+info() {
+    printf '%s\n' "$*"
+    log "$*"
+}
+warn() {
+    printf '%s%s%s\n' "${YEL}" "$*" "${OFF}" >&2
+    log "WARNING: $*"
+}
+die() {
+    printf '%s%s%s\n' "${RED}" "$*" "${OFF}" >&2
+    log "ERROR: $*"
+    exit 1
+}
+
+DIAG_URL="https://raw.githubusercontent.com/${REPO}/master/linux/diagnose.sh"
+
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/wpa-install.XXXXXX")" || die "Cannot create a temp directory."
-trap 'rm -rf "${TMP}"' EXIT
+
+on_exit() {
+    local rc=$?
+    rm -rf "${TMP}"
+    log "--- exit ${rc} at $(date -Is 2>/dev/null || date)"
+    if [[ ${rc} -ne 0 ]]; then
+        {
+            printf '\n%sInstall failed (exit %s).%s\n' "${RED}" "${rc}" "${OFF}"
+            printf 'Send this file to the developer - it has the whole session in it:\n'
+            printf '  %s%s%s\n' "${GRN}" "${LOG}" "${OFF}"
+            printf '\nFor the full picture of the machine, also run:\n'
+            if have wallpaperanim-diagnose; then
+                printf '  %swallpaperanim-diagnose%s\n' "${GRN}" "${OFF}"
+            else
+                printf '  %scurl -fsSL %s | bash%s\n' "${GRN}" "${DIAG_URL}" "${OFF}"
+            fi
+            printf 'and send the report file it writes.\n'
+        } >&2
+    fi
+    exit "${rc}"
+}
+trap on_exit EXIT
+
+# A self-contained header, so the log answers "which machine, which day" on its own.
+{
+    printf '\n===============================================================\n'
+    printf 'WallpaperAnim install %s\n' "$(date -Is 2>/dev/null || date)"
+    printf 'args      : %s\n' "${ORIGINAL_ARGS:-<none>}"
+    printf 'host      : %s (%s)\n' "$(hostname 2>/dev/null || echo ?)" "$(uname -m)"
+    printf 'distro    : %s\n' "$( . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}")"
+    printf 'kernel    : %s\n' "$(uname -r)"
+    printf 'session   : %s / %s\n' "${XDG_SESSION_TYPE:-?}" "${XDG_CURRENT_DESKTOP:-?}"
+    printf 'installed : %s\n' "$(pacman -Q wallpaperanim 2>/dev/null || echo none)"
+    printf 'libraries : %s\n' "$(pacman -Q qt6-base mpv layer-shell-qt ffmpeg glibc 2>/dev/null | tr '\n' ' ')"
+    printf '===============================================================\n'
+} >>"${LOG}" 2>/dev/null
 
 # --- preconditions ----------------------------------------------------------------
 have pacman || die "This installer is for Arch-based distros only.
@@ -142,8 +198,13 @@ Releases: https://github.com/${REPO}/releases"
 
     PKG="${TMP}/$(basename "${url}")"
     info "Downloading ${DIM}${url}${OFF}"
-    curl -fL --retry 3 --retry-delay 2 --max-time 300 --progress-bar "${url}" -o "${PKG}" ||
+    # No progress meter: its carriage returns would land in the log as one unreadable
+    # line of hashes, and the error text is the part worth keeping.
+    if ! curl -fL --retry 3 --retry-delay 2 --max-time 300 --no-progress-meter "${url}" \
+        -o "${PKG}" 2>"${TMP}/curl.err"; then
+        [[ -s "${TMP}/curl.err" ]] && { cat "${TMP}/curl.err" >&2; log "$(cat "${TMP}/curl.err")"; }
         die "Download failed: ${url}"
+    fi
 
     # Verify against the checksum published next to the asset when there is one.
     if curl -fsSL --max-time 30 "${url}.sha256" -o "${TMP}/sum" 2>/dev/null; then
@@ -224,7 +285,8 @@ fi
 
 info ""
 info "Installing ${NEW_VERSION} ..."
-if ! "${SUDO[@]}" pacman -U --noconfirm "${PKG}"; then
+"${SUDO[@]}" pacman -U --noconfirm "${PKG}" 2>&1 | tee -a "${LOG}"
+if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
     die "pacman refused the package.
 If it complains about dependencies, run 'sudo pacman -Syu' and try again."
 fi
@@ -239,4 +301,5 @@ info "${GRN}WallpaperAnim ${NEW_VERSION} installed.${OFF}"
 if [[ ${WAS_RUNNING} -eq 0 ]]; then
     info "Launch it from the application menu, or run: wallpaperanim"
 fi
+info "${DIM}Log of this install: ${LOG}${OFF}"
 info "${DIM}If anything misbehaves: wallpaperanim-diagnose  (writes one report file to send back)${OFF}"
