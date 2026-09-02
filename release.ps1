@@ -17,4 +17,18 @@ $tag = "v$version"
 
 $notes = "WallpaperAnim $tag. Includes the Setup executable and a Portable zip."
 
-gh release create $tag -t "Release $tag" -n $notes WallpaperAnimSetup.exe WallpaperAnim-Portable.zip
+# The Linux side (linux/release.sh) publishes its package into the same release and may
+# have created it already, so upload into an existing release instead of failing on it.
+$exists = $false
+try {
+    gh release view $tag *> $null
+    $exists = ($LASTEXITCODE -eq 0)
+} catch {
+    $exists = $false
+}
+
+if ($exists) {
+    gh release upload $tag WallpaperAnimSetup.exe WallpaperAnim-Portable.zip --clobber
+} else {
+    gh release create $tag -t "Release $tag" -n $notes WallpaperAnimSetup.exe WallpaperAnim-Portable.zip
+}

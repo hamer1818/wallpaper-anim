@@ -36,13 +36,23 @@ Requires Windows 10 (1809+) or Windows 11, x64.
 A native Wayland port lives in [`linux/`](linux/) — same library, playlists, fit modes and
 `config.json` schema, rendered with **libmpv** behind a **Qt 6** settings UI.
 
-On Arch / CachyOS, install the package — pacman pulls in Qt 6, mpv and the rest, and the
-app appears in the application menu:
+On Arch / CachyOS, one command installs it — and the same command later updates it in
+place. pacman pulls in Qt 6, mpv and the rest, and the app appears in the application
+menu:
 
 ```sh
-sudo pacman -U wallpaperanim-1.5.0-1-x86_64.pkg.tar.zst   # from the release, or:
+curl -fsSL https://raw.githubusercontent.com/hamer1818/wallpaper-anim/master/linux/install.sh | bash
+```
+
+Or, from a release download / this checkout:
+
+```sh
+sudo pacman -U wallpaperanim-1.6.0-1-x86_64.pkg.tar.zst   # from the release, or:
 cd linux && ./package.sh install                          # build it from this checkout
 ```
+
+If it ever fails to start, `wallpaperanim-diagnose` writes a single report file that
+pinpoints why (missing library, ABI mismatch, wrong session, Plasma containment).
 
 Any other distro builds from source:
 

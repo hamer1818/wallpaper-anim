@@ -29,4 +29,18 @@ build() {
 package() {
     DESTDIR="${pkgdir}" cmake --install "${srcdir}/build"
     install -Dm644 "${_repo_root}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+    # Ship the diagnostic collector with the versions this binary was actually compiled
+    # against baked in. Arch makes no ABI promise across versions and the depends above
+    # carry no bounds, so a recipient whose system is behind gets a package that installs
+    # cleanly and then will not start; stamped this way, their report says so by itself.
+    local baseline
+    baseline="$(pacman -Q qt6-base qt6-declarative qt6-multimedia mpv layer-shell-qt \
+        ffmpeg glibc gcc-libs 2>/dev/null | awk '{printf "%s=%s ", $1, $2}')"
+    local hostinfo
+    hostinfo="wallpaperanim ${pkgver}-${pkgrel}, built $(date -u +%Y-%m-%dT%H:%MZ) on $( . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}")"
+    sed -e "s|@WPA_BUILD_BASELINE@|${baseline% }|" \
+        -e "s|@WPA_BUILD_HOST_INFO@|${hostinfo}|" \
+        "${_repo_root}/linux/diagnose.sh" >"${srcdir}/wallpaperanim-diagnose"
+    install -Dm755 "${srcdir}/wallpaperanim-diagnose" "${pkgdir}/usr/bin/wallpaperanim-diagnose"
 }

@@ -46,16 +46,37 @@ mkdir -p "${dist_dir}"
 cd "${pkg_dir}"
 PKGDEST="${dist_dir}" BUILDDIR="${dist_dir}/.build" makepkg --force --cleanbuild
 rm -rf "${dist_dir}/.build"
+# Checksums and the unversioned release copy belong to the previous build; release.sh
+# regenerates both after calling this script, so stale ones can only mislead.
+rm -f "${dist_dir}"/*.sha256 "${dist_dir}/wallpaperanim-x86_64.pkg.tar.zst"
 
-package_file="$(ls -t "${dist_dir}"/*.pkg.tar.zst 2>/dev/null | head -n1 || true)"
+# The version-<rel> shape excludes the unversioned copy release.sh leaves here for the
+# stable "latest" download URL.
+package_file="$(ls -t "${dist_dir}"/wallpaperanim-*-*-x86_64.pkg.tar.zst 2>/dev/null | head -n1 || true)"
 if [[ -z "${package_file}" ]]; then
     echo "makepkg reported success but produced no package file." >&2
     exit 1
 fi
 
+# The stamped diagnostic collector also goes out on its own: someone whose install will
+# not start still needs to run it, and pacman may have refused the install entirely.
+if bsdtar -xOf "${package_file}" usr/bin/wallpaperanim-diagnose >"${dist_dir}/diagnose.sh" 2>/dev/null &&
+    [[ -s "${dist_dir}/diagnose.sh" ]]; then
+    chmod +x "${dist_dir}/diagnose.sh"
+else
+    rm -f "${dist_dir}/diagnose.sh"
+    echo "Warning: could not extract the diagnostic collector from the package." >&2
+fi
+
 echo
 echo "Package: ${package_file}"
 echo "Install: sudo pacman -U '${package_file}'"
+if [[ -f "${dist_dir}/diagnose.sh" ]]; then
+    echo
+    echo "If it does not start on their machine, have them run:"
+    echo "  ./diagnose.sh            (${dist_dir}/diagnose.sh, or wallpaperanim-diagnose once installed)"
+    echo "and send back the single report file it writes."
+fi
 
 if [[ "${action}" == "install" ]]; then
     sudo pacman -U --noconfirm "${package_file}"

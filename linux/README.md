@@ -10,12 +10,26 @@ in the same repository.
 
 ## Install
 
-**Arch / CachyOS — one file, one command.** This is the counterpart of the Windows
+**Arch / CachyOS — one command.** This is the counterpart of the Windows
 `WallpaperAnimSetup.exe`: pacman pulls in Qt 6, mpv and the rest by itself, and the app
 lands in the application menu. Nothing to extract, no PATH to set.
 
 ```sh
-sudo pacman -U wallpaperanim-1.5.0-1-x86_64.pkg.tar.zst
+curl -fsSL https://raw.githubusercontent.com/hamer1818/wallpaper-anim/master/linux/install.sh | bash
+```
+
+The same command **updates** an existing install: it fetches the newest release, verifies
+the download against the published SHA-256, stops the running instance, installs over the
+old version and starts it again. Before installing anything it compares the library
+versions the package was compiled against with the ones on this machine and stops with an
+explanation rather than leaving you with an app that installs cleanly and never starts —
+`--force` overrides, `--tag v1.6.0` pins a version, `--dry-run` shows what it would do.
+
+Or download the `.pkg.tar.zst` from [Releases](https://github.com/hamer1818/wallpaper-anim/releases)
+and install it by hand:
+
+```sh
+sudo pacman -U wallpaperanim-1.6.0-1-x86_64.pkg.tar.zst
 ```
 
 Build that file from a checkout with:
@@ -23,6 +37,7 @@ Build that file from a checkout with:
 ```sh
 cd linux && ./package.sh            # -> linux/dist/wallpaperanim-<version>-x86_64.pkg.tar.zst
 cd linux && ./package.sh install    # build it and install it here
+cd linux && ./release.sh            # build it and publish it to the GitHub release
 ```
 
 Optional extra, only for the YouTube tab: `sudo pacman -S yt-dlp`.
@@ -167,6 +182,26 @@ socket and exits.
   frames because the wallpaper is fully covered, decoding stops until it asks again.
 
 ## Troubleshooting
+
+**It does not start at all — collect a diagnostic report.** `diagnose.sh` (installed as
+`wallpaperanim-diagnose`, and shipped next to the package in `linux/dist/`) writes one
+text file with everything needed to pinpoint a startup failure, and prints its findings
+straight away:
+
+```sh
+wallpaperanim-diagnose          # or ./diagnose.sh from linux/dist
+```
+
+It is read-only apart from that file: no config, package or wallpaper is touched. It
+records the distro and session, the dynamic-link state of the binary, an actual launch
+attempt with the exit code and stderr, the config and media it would load, the Plasma
+containment state, and the journal and core dumps. The most important part is automatic:
+the packaged copy is stamped with the exact library versions the binary was compiled
+against, and the script compares them against the ones installed on that machine with
+`vercmp`. Arch-family distros make no ABI promise across versions and this package
+declares its dependencies without version bounds, so a package built on an up-to-date
+machine installs cleanly on a system that is months behind and then refuses to start —
+that comparison names the offending package instead of leaving it to guesswork.
 
 **Nothing shows up on KDE.** Check that the desktop containment really switched:
 `qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "print(desktops()[0].wallpaperPlugin)"`
